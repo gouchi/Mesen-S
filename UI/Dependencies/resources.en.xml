@@ -296,6 +296,28 @@
 			<Control ID="btnOK">OK</Control>
 			<Control ID="btnCancel">Cancel</Control>
 		</Form>
+		<Form ID="frmGameboyConfig" Title="Game Boy Config">
+			<Control ID="tpgGeneral">General</Control>
+			<Control ID="lblModel">Model</Control>
+			<Control ID="chkUseSgb2">Use Super Game Boy 2 timings and behavior</Control>
+
+			<Control ID="tpgVideo">Video</Control>
+			<Control ID="lblGameboyPalette">Game Boy (DMG) Palette</Control>
+			<Control ID="lblGbBackground">Background:</Control>
+			<Control ID="lblGbObj0">Sprites #1:</Control>
+			<Control ID="lblGbObj1">Sprites #2:</Control>
+			<Control ID="btnSelectPreset">Select Preset...</Control>
+
+			<Control ID="lblLcdSettings">LCD Settings</Control>
+			<Control ID="chkGbBlendFrames">Enable LCD frame blending</Control>
+			<Control ID="chkGbcAdjustColors">Enable GBC LCD color emulation</Control>
+
+			<Control ID="tpgAudio">Audio</Control>
+			<Control ID="grpVolume">Volume</Control>
+			
+			<Control ID="btnOK">OK</Control>
+			<Control ID="btnCancel">Cancel</Control>
+		</Form>
 		<Form ID="frmPreferences" Title="Preferences">
 			<Control ID="tpgGeneral">General</Control>
 			<Control ID="lblDisplayLanguage">Display Language:</Control>
@@ -787,6 +809,10 @@
 		<Message ID="EmulatorShortcutMappings_ToggleSprites">Toggle Sprites</Message>
 		<Message ID="EmulatorShortcutMappings_EnableAllLayers">Enable All Layers</Message>
 
+		<Message ID="EmulatorShortcutMappings_ToggleRecordVideo">Start/Stop Recording Video</Message>
+		<Message ID="EmulatorShortcutMappings_ToggleRecordAudio">Start/Stop Recording Audio</Message>
+		<Message ID="EmulatorShortcutMappings_ToggleRecordMovie">Start/Stop Recording Movie</Message>
+		
 		<Message ID="EmulatorShortcutMappings_MaxSpeed">Toggle Maximum Speed</Message>
 		<Message ID="EmulatorShortcutMappings_LoadRandomGame">Load Random Game</Message>
 		<Message ID="EmulatorShortcutMappings_SaveStateSlot1">Save State - Slot 1</Message>
@@ -960,9 +986,17 @@
 			<Value ID="GbPrgRom">GB - PRG ROM</Value>
 			<Value ID="GbWorkRam">GB - Work RAM</Value>
 			<Value ID="GbVideoRam">GB - Video RAM</Value>
+			<Value ID="GbSpriteRam">GB - Sprite RAM</Value>
 			<Value ID="GbCartRam">GB - Cart RAM</Value>
 			<Value ID="GbHighRam">GB - High RAM</Value>
+			<Value ID="GbBootRom">GB - Boot ROM</Value>
 			<Value ID="Register">Register</Value>
+		</Enum>
+		<Enum ID="GameboyModel">
+			<Value ID="Auto">Auto</Value>
+			<Value ID="Gameboy">Game Boy</Value>
+			<Value ID="GameboyColor">Game Boy Color</Value>
+			<Value ID="SuperGameboy">Super Game Boy</Value>
 		</Enum>
 		<Enum ID="TileFormat">
 			<Value ID="Bpp2">2 bpp</Value>
@@ -976,6 +1010,13 @@
 			<Value ID="Normal">Normal</Value>
 			<Value ID="SingleLine8x16">8x16 (same line)</Value>
 			<Value ID="SingleLine16x16">16x16 (same line)</Value>
+		</Enum>
+		<Enum ID="TileBackground">
+			<Value ID="Default">Default (Color 0)</Value>
+			<Value ID="PaletteColor">Palette Color 0</Value>
+			<Value ID="Black">Black</Value>
+			<Value ID="White">White</Value>
+			<Value ID="Magenta">Magenta</Value>
 		</Enum>
 		<Enum ID="StatusFlagFormat">
 			<Value ID="Hexadecimal">Hexadecimal</Value>
@@ -991,6 +1032,12 @@
 			<Value ID="BreakOnWdm">WDM</Value>
 			<Value ID="BreakOnStp">STP</Value>
 			<Value ID="BreakOnUninitMemoryRead">Uninitialized memory read</Value>
+			<Value ID="GbInvalidOamAccess">Invalid OAM access</Value>
+			<Value ID="GbInvalidVramAccess">Invalid VRAM access</Value>
+			<Value ID="GbDisableLcdOutsideVblank">Disabled LCD outside vblank</Value>
+			<Value ID="GbInvalidOpCode">Invalid instruction</Value>
+			<Value ID="GbNopLoad">LD B,B (NOP)</Value>
+			<Value ID="GbOamCorruption">OAM corruption bug triggered</Value>
 		</Enum>
 		<Enum ID="MemoryOperationType">
 			<Value ID="Read">Read</Value>

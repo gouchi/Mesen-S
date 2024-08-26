@@ -182,10 +182,20 @@ enum class TileLayout
 	SingleLine16x16
 };
 
+enum class TileBackground
+{
+	Default = 0,
+	PaletteColor = 1,
+	Black = 2,
+	White = 3,
+	Magenta = 4
+};
+
 struct GetTileViewOptions
 {
 	TileFormat Format;
 	TileLayout Layout;
+	TileBackground Background;
 	int32_t Width;
 	int32_t Palette;
 	int32_t PageSize;
@@ -230,7 +240,14 @@ enum class BreakSource
 	BreakOnCop = 4,
 	BreakOnWdm = 5,
 	BreakOnStp = 6,
-	BreakOnUninitMemoryRead = 7
+	BreakOnUninitMemoryRead = 7,
+	
+	GbInvalidOamAccess = 8,
+	GbInvalidVramAccess = 9,
+	GbDisableLcdOutsideVblank = 10,
+	GbInvalidOpCode = 11,
+	GbNopLoad = 12,
+	GbOamCorruption = 13,
 };
 
 struct BreakEvent

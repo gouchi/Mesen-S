@@ -4,6 +4,7 @@
 #include "PpuTypes.h"
 #include "DebugTypes.h"
 #include "DebugUtilities.h"
+#include "../Utilities/SimpleLock.h"
 
 class Console;
 class Cpu;
@@ -34,8 +35,9 @@ class NecDspDebugger;
 class Cx4Debugger;
 class GbDebugger;
 class Breakpoint;
-class Assembler;
 class IEventManager;
+class IAssembler;
+class Gameboy;
 
 enum class EventType;
 enum class EvalResultType : int32_t;
@@ -51,7 +53,9 @@ private:
 	shared_ptr<BaseCartridge> _cart;
 	shared_ptr<InternalRegisters> _internalRegs;
 	shared_ptr<DmaController> _dmaController;
-	
+
+	Gameboy* _gameboy = nullptr;
+
 	shared_ptr<EmuSettings> _settings;
 	unique_ptr<SpcDebugger> _spcDebugger;
 	unique_ptr<CpuDebugger> _cpuDebugger;
@@ -69,20 +73,19 @@ private:
 	shared_ptr<Disassembler> _disassembler;
 	shared_ptr<PpuTools> _ppuTools;
 	shared_ptr<LabelManager> _labelManager;
-	shared_ptr<Assembler> _assembler;
 
 	unique_ptr<ExpressionEvaluator> _watchExpEval[(int)DebugUtilities::GetLastCpuType() + 1];
+	
+	SimpleLock _logLock;
+	std::list<string> _debuggerLog;
 
 	atomic<bool> _executionStopped;
 	atomic<uint32_t> _breakRequestCount;
 	atomic<uint32_t> _suspendRequestCount;
 
-	unique_ptr<StepRequest> _step;
-	
 	bool _waitForBreakResume = false;
 	
 	void Reset();
-	void SleepUntilResume(BreakSource source, MemoryOperationInfo *operation = nullptr, int breakpointId = -1);
 
 public:
 	Debugger(shared_ptr<Console> console);
@@ -100,7 +103,9 @@ public:
 
 	void ProcessPpuRead(uint16_t addr, uint8_t value, SnesMemoryType memoryType);
 	void ProcessPpuWrite(uint16_t addr, uint8_t value, SnesMemoryType memoryType);
-	void ProcessPpuCycle(uint16_t scanline, uint16_t cycle);
+
+	template<CpuType cpuType>
+	void ProcessPpuCycle();
 
 	template<CpuType type>
 	void ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, bool forNmi);
@@ -117,7 +122,10 @@ public:
 	void BreakRequest(bool release);
 	void SuspendDebugger(bool release);
 
+	void BreakImmediately(BreakSource source);
+
 	void ProcessBreakConditions(bool needBreak, BreakpointManager *bpManager, MemoryOperationInfo &operation, AddressInfo &addressInfo, BreakSource source = BreakSource::Unspecified);
+	void SleepUntilResume(BreakSource source, MemoryOperationInfo* operation = nullptr, int breakpointId = -1);
 
 	void GetState(DebugState &state, bool partialPpuState);
 
@@ -125,24 +133,29 @@ public:
 	AddressInfo GetRelativeAddress(AddressInfo absAddress, CpuType cpuType);
 
 	void GetCdlData(uint32_t offset, uint32_t length, SnesMemoryType memoryType, uint8_t* cdlData);
-	void SetCdlData(uint8_t * cdlData, uint32_t length);
-	void MarkBytesAs(uint32_t start, uint32_t end, uint8_t flags);
+	void SetCdlData(CpuType cpuType, uint8_t * cdlData, uint32_t length);
+	void MarkBytesAs(CpuType cpuType, uint32_t start, uint32_t end, uint8_t flags);
+	
 	void RefreshCodeCache();
+	void RebuildPrgCache(CpuType cpuType);
 
 	void SetBreakpoints(Breakpoint breakpoints[], uint32_t length);
 	
+	void Log(string message);
+	string GetLog();
+
 	void SaveRomToDisk(string filename, bool saveAsIps, CdlStripOption stripOption);
 
 	shared_ptr<TraceLogger> GetTraceLogger();
 	shared_ptr<MemoryDumper> GetMemoryDumper();
 	shared_ptr<MemoryAccessCounter> GetMemoryAccessCounter();
-	shared_ptr<CodeDataLogger> GetCodeDataLogger();
+	shared_ptr<CodeDataLogger> GetCodeDataLogger(CpuType cpuType);
 	shared_ptr<Disassembler> GetDisassembler();
 	shared_ptr<PpuTools> GetPpuTools();
-	shared_ptr<IEventManager> GetEventManager();
+	shared_ptr<IEventManager> GetEventManager(CpuType cpuType);
 	shared_ptr<LabelManager> GetLabelManager();
 	shared_ptr<ScriptManager> GetScriptManager();
 	shared_ptr<CallstackManager> GetCallstackManager(CpuType cpuType);
 	shared_ptr<Console> GetConsole();
-	shared_ptr<Assembler> GetAssembler();
+	shared_ptr<IAssembler> GetAssembler(CpuType cpuType);
 };

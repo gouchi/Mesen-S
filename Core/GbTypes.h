@@ -4,7 +4,6 @@
 
 struct GbCpuState
 {
-	uint64_t CycleCount;
 	uint16_t PC;
 	uint16_t SP;
 
@@ -19,6 +18,7 @@ struct GbCpuState
 	uint8_t H;
 	uint8_t L;
 
+	bool EiPending;
 	bool IME;
 	bool Halted;
 };
@@ -87,7 +87,8 @@ enum class PpuMode
 	HBlank,
 	VBlank,
 	OamEvaluation,
-	Drawing
+	Drawing,
+	NoIrq,
 };
 
 namespace GbPpuStatusFlags
@@ -101,14 +102,67 @@ namespace GbPpuStatusFlags
 	};
 }
 
+enum class EvtColor
+{
+	HBlank = 0,
+	VBlank = 1,
+	OamEvaluation = 2,
+	RenderingIdle = 3,
+	RenderingBgLoad = 4,
+	RenderingOamLoad = 5,
+	LcdColor = 6,
+};
+
+struct GbFifoEntry
+{
+	uint8_t Color;
+	uint8_t Attributes;
+};
+
+struct GbPpuFifo
+{
+	uint8_t Position = 0;
+	uint8_t Size = 0;
+	GbFifoEntry Content[8] = {};
+
+	void Reset()
+	{
+		Size = 0;
+		Position = 0;
+		memset(Content, 0, sizeof(Content));
+	}
+
+	void Pop()
+	{
+		Content[Position].Color = 0;
+		Position = (Position + 1) & 0x07;
+		Size--;
+	}
+};
+
+struct GbPpuFetcher
+{
+	uint16_t Addr = 0;
+	uint8_t Attributes = 0;
+	uint8_t Step = 0;
+	uint8_t LowByte = 0;
+	uint8_t HighByte = 0;
+};
+
 struct GbPpuState
 {
 	uint8_t Scanline;
 	uint16_t Cycle;
+	uint16_t IdleCycles;
 	PpuMode Mode;
+	PpuMode IrqMode;
 	bool StatIrqFlag;
+	
+	uint8_t Ly;
+	int16_t LyForCompare;
 
 	uint8_t LyCompare;
+	bool LyCoincidenceFlag;
 	uint8_t BgPalette;
 	uint8_t ObjPalette0;
 	uint8_t ObjPalette1;
@@ -130,12 +184,9 @@ struct GbPpuState
 	uint8_t Status;
 	uint32_t FrameCount;
 
+	bool CgbEnabled;
 	uint8_t CgbVramBank;
-	uint16_t CgbDmaSource;
-	uint16_t CgbDmaDest;
-	uint8_t CgbDmaLength;
-	bool CgbHdmaMode;
-
+	
 	uint8_t CgbBgPalPosition;
 	bool CgbBgPalAutoInc;
 	uint16_t CgbBgPalettes[4 * 8];
@@ -143,6 +194,35 @@ struct GbPpuState
 	uint8_t CgbObjPalPosition;
 	bool CgbObjPalAutoInc;
 	uint16_t CgbObjPalettes[4 * 8];
+};
+
+struct GbDmaControllerState
+{
+	uint8_t OamDmaSource;
+	uint8_t DmaStartDelay;
+	uint8_t InternalDest;
+	uint8_t DmaCounter;
+	uint8_t DmaReadBuffer;
+
+	uint16_t CgbDmaSource;
+	uint16_t CgbDmaDest;
+	uint8_t CgbDmaLength;
+	bool CgbHdmaDone;
+	bool CgbHdmaRunning;
+};
+
+struct GbTimerState
+{
+	uint16_t Divider;
+
+	bool NeedReload; //Set after TIMA (_counter) overflowed, next cycle will reload TMA into TIMA
+	bool Reloaded; //Set during the cycle on which TIMA is reloaded (affects TMA/TIMA writes)
+	uint8_t Counter;
+	uint8_t Modulo;
+
+	uint8_t Control;
+	bool TimerEnabled;
+	uint16_t TimerDivider;
 };
 
 struct GbSquareState
@@ -160,6 +240,7 @@ struct GbSquareState
 	bool EnvRaiseVolume;
 	uint8_t EnvPeriod;
 	uint8_t EnvTimer;
+	bool EnvStopped;
 
 	uint8_t Duty;
 	uint16_t Frequency;
@@ -260,18 +341,31 @@ enum class GbMemoryType
 	PrgRom = (int)SnesMemoryType::GbPrgRom,
 	WorkRam = (int)SnesMemoryType::GbWorkRam,
 	CartRam = (int)SnesMemoryType::GbCartRam,
+	BootRom = (int)SnesMemoryType::GbBootRom,
 };
 
 struct GbMemoryManagerState
 {
+	uint64_t CycleCount;
+	uint64_t ApuCycleCount;
+	
 	uint8_t CgbWorkRamBank;
 	bool CgbSwitchSpeedRequest;
 	bool CgbHighSpeed;
-	uint64_t ApuCycleCount;
+
+	uint8_t CgbRegFF72;
+	uint8_t CgbRegFF73;
+	uint8_t CgbRegFF74;
+	uint8_t CgbRegFF75;
+
 	bool DisableBootRom;
 	uint8_t IrqRequests;
 	uint8_t IrqEnabled;
 	uint8_t InputSelect;
+
+	uint8_t SerialData;
+	uint8_t SerialControl;
+	uint8_t SerialBitCount;
 
 	bool IsReadRegister[0x100];
 	bool IsWriteRegister[0x100];
@@ -294,5 +388,7 @@ struct GbState
 	GbPpuState Ppu;	
 	GbApuDebugState Apu;
 	GbMemoryManagerState MemoryManager;
+	GbTimerState Timer;
+	GbDmaControllerState Dma;
 	bool HasBattery;
 };

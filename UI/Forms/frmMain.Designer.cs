@@ -110,6 +110,8 @@
 			this.mnuInputConfig = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuVideoConfig = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuEmulationConfig = new System.Windows.Forms.ToolStripMenuItem();
+			this.toolStripMenuItem22 = new System.Windows.Forms.ToolStripSeparator();
+			this.mnuGameboyConfig = new System.Windows.Forms.ToolStripMenuItem();
 			this.toolStripMenuItem3 = new System.Windows.Forms.ToolStripSeparator();
 			this.mnuPreferences = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuTools = new System.Windows.Forms.ToolStripMenuItem();
@@ -150,6 +152,11 @@
 			this.mnuTakeScreenshot = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuDebug = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuGbDebugger = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuGbEventViewer = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuGbTilemapViewer = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuGbTileViewer = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuGbSpriteViewer = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuGbPaletteViewer = new System.Windows.Forms.ToolStripMenuItem();
 			this.sepGameboyDebugger = new System.Windows.Forms.ToolStripSeparator();
 			this.mnuDebugger = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuEventViewer = new System.Windows.Forms.ToolStripMenuItem();
@@ -158,6 +165,7 @@
 			this.mnuTraceLogger = new System.Windows.Forms.ToolStripMenuItem();
 			this.toolStripMenuItem26 = new System.Windows.Forms.ToolStripSeparator();
 			this.mnuAssembler = new System.Windows.Forms.ToolStripMenuItem();
+			this.mnuDebugLog = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuProfiler = new System.Windows.Forms.ToolStripMenuItem();
 			this.mnuScriptWindow = new System.Windows.Forms.ToolStripMenuItem();
 			this.toolStripMenuItem12 = new System.Windows.Forms.ToolStripSeparator();
@@ -179,6 +187,8 @@
 			this.mnuAbout = new System.Windows.Forms.ToolStripMenuItem();
 			this.pnlRenderer = new System.Windows.Forms.Panel();
 			this.ctrlRecentGames = new Mesen.GUI.Controls.ctrlRecentGames();
+			this.mnuOnlineHelp = new System.Windows.Forms.ToolStripMenuItem();
+			this.toolStripMenuItem27 = new System.Windows.Forms.ToolStripSeparator();
 			this.mnuMain.SuspendLayout();
 			this.pnlRenderer.SuspendLayout();
 			this.SuspendLayout();
@@ -342,6 +352,8 @@
             this.mnuInputConfig,
             this.mnuVideoConfig,
             this.mnuEmulationConfig,
+            this.toolStripMenuItem22,
+            this.mnuGameboyConfig,
             this.toolStripMenuItem3,
             this.mnuPreferences});
 			this.mnuOptions.Name = "mnuOptions";
@@ -799,6 +811,19 @@
 			this.mnuEmulationConfig.Text = "Emulation";
 			this.mnuEmulationConfig.Click += new System.EventHandler(this.mnuEmulationConfig_Click);
 			// 
+			// toolStripMenuItem22
+			// 
+			this.toolStripMenuItem22.Name = "toolStripMenuItem22";
+			this.toolStripMenuItem22.Size = new System.Drawing.Size(132, 6);
+			// 
+			// mnuGameboyConfig
+			// 
+			this.mnuGameboyConfig.Image = global::Mesen.GUI.Properties.Resources.GameboyIcon;
+			this.mnuGameboyConfig.Name = "mnuGameboyConfig";
+			this.mnuGameboyConfig.Size = new System.Drawing.Size(135, 22);
+			this.mnuGameboyConfig.Text = "Game Boy";
+			this.mnuGameboyConfig.Click += new System.EventHandler(this.mnuGameboyConfig_Click);
+			// 
 			// toolStripMenuItem3
 			// 
 			this.toolStripMenuItem3.Name = "toolStripMenuItem3";
@@ -1095,6 +1120,11 @@
 			// 
 			this.mnuDebug.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.mnuGbDebugger,
+            this.mnuGbEventViewer,
+            this.mnuGbTilemapViewer,
+            this.mnuGbTileViewer,
+            this.mnuGbSpriteViewer,
+            this.mnuGbPaletteViewer,
             this.sepGameboyDebugger,
             this.mnuDebugger,
             this.mnuEventViewer,
@@ -1103,6 +1133,7 @@
             this.mnuTraceLogger,
             this.toolStripMenuItem26,
             this.mnuAssembler,
+            this.mnuDebugLog,
             this.mnuProfiler,
             this.mnuScriptWindow,
             this.toolStripMenuItem12,
@@ -1127,7 +1158,42 @@
 			this.mnuGbDebugger.Image = global::Mesen.GUI.Properties.Resources.GbDebugger;
 			this.mnuGbDebugger.Name = "mnuGbDebugger";
 			this.mnuGbDebugger.Size = new System.Drawing.Size(183, 22);
-			this.mnuGbDebugger.Text = "Game Boy Debugger";
+			this.mnuGbDebugger.Text = "GB Debugger";
+			// 
+			// mnuGbEventViewer
+			// 
+			this.mnuGbEventViewer.Image = global::Mesen.GUI.Properties.Resources.NesEventViewer;
+			this.mnuGbEventViewer.Name = "mnuGbEventViewer";
+			this.mnuGbEventViewer.Size = new System.Drawing.Size(183, 22);
+			this.mnuGbEventViewer.Text = "GB Event Viewer";
+			// 
+			// mnuGbTilemapViewer
+			// 
+			this.mnuGbTilemapViewer.Image = global::Mesen.GUI.Properties.Resources.VideoOptions;
+			this.mnuGbTilemapViewer.Name = "mnuGbTilemapViewer";
+			this.mnuGbTilemapViewer.Size = new System.Drawing.Size(183, 22);
+			this.mnuGbTilemapViewer.Text = "GB Tilemap Viewer";
+			// 
+			// mnuGbTileViewer
+			// 
+			this.mnuGbTileViewer.Image = global::Mesen.GUI.Properties.Resources.VerticalLayout;
+			this.mnuGbTileViewer.Name = "mnuGbTileViewer";
+			this.mnuGbTileViewer.Size = new System.Drawing.Size(183, 22);
+			this.mnuGbTileViewer.Text = "GB Tile Viewer";
+			// 
+			// mnuGbSpriteViewer
+			// 
+			this.mnuGbSpriteViewer.Image = global::Mesen.GUI.Properties.Resources.PerfTracker;
+			this.mnuGbSpriteViewer.Name = "mnuGbSpriteViewer";
+			this.mnuGbSpriteViewer.Size = new System.Drawing.Size(183, 22);
+			this.mnuGbSpriteViewer.Text = "GB Sprite Viewer";
+			// 
+			// mnuGbPaletteViewer
+			// 
+			this.mnuGbPaletteViewer.Image = global::Mesen.GUI.Properties.Resources.VideoFilter;
+			this.mnuGbPaletteViewer.Name = "mnuGbPaletteViewer";
+			this.mnuGbPaletteViewer.Size = new System.Drawing.Size(183, 22);
+			this.mnuGbPaletteViewer.Text = "GB Palette Viewer";
 			// 
 			// sepGameboyDebugger
 			// 
@@ -1180,6 +1246,13 @@
 			this.mnuAssembler.Name = "mnuAssembler";
 			this.mnuAssembler.Size = new System.Drawing.Size(183, 22);
 			this.mnuAssembler.Text = "Assembler";
+			// 
+			// mnuDebugLog
+			// 
+			this.mnuDebugLog.Image = global::Mesen.GUI.Properties.Resources.LogWindow;
+			this.mnuDebugLog.Name = "mnuDebugLog";
+			this.mnuDebugLog.Size = new System.Drawing.Size(183, 22);
+			this.mnuDebugLog.Text = "Debug Log";
 			// 
 			// mnuProfiler
 			// 
@@ -1271,6 +1344,8 @@
 			// mnuHelp
 			// 
 			this.mnuHelp.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.mnuOnlineHelp,
+            this.toolStripMenuItem27,
             this.mnuCheckForUpdates,
             this.toolStripMenuItem20,
             this.mnuReportBug,
@@ -1286,33 +1361,33 @@
 			// 
 			this.mnuCheckForUpdates.Image = global::Mesen.GUI.Properties.Resources.Update;
 			this.mnuCheckForUpdates.Name = "mnuCheckForUpdates";
-			this.mnuCheckForUpdates.Size = new System.Drawing.Size(170, 22);
+			this.mnuCheckForUpdates.Size = new System.Drawing.Size(180, 22);
 			this.mnuCheckForUpdates.Text = "Check for updates";
 			this.mnuCheckForUpdates.Click += new System.EventHandler(this.mnuCheckForUpdates_Click);
 			// 
 			// toolStripMenuItem20
 			// 
 			this.toolStripMenuItem20.Name = "toolStripMenuItem20";
-			this.toolStripMenuItem20.Size = new System.Drawing.Size(167, 6);
+			this.toolStripMenuItem20.Size = new System.Drawing.Size(177, 6);
 			// 
 			// mnuReportBug
 			// 
 			this.mnuReportBug.Image = global::Mesen.GUI.Properties.Resources.Comment;
 			this.mnuReportBug.Name = "mnuReportBug";
-			this.mnuReportBug.Size = new System.Drawing.Size(170, 22);
+			this.mnuReportBug.Size = new System.Drawing.Size(180, 22);
 			this.mnuReportBug.Text = "Report a bug";
 			this.mnuReportBug.Click += new System.EventHandler(this.mnuReportBug_Click);
 			// 
 			// toolStripMenuItem5
 			// 
 			this.toolStripMenuItem5.Name = "toolStripMenuItem5";
-			this.toolStripMenuItem5.Size = new System.Drawing.Size(167, 6);
+			this.toolStripMenuItem5.Size = new System.Drawing.Size(177, 6);
 			// 
 			// mnuAbout
 			// 
 			this.mnuAbout.Image = global::Mesen.GUI.Properties.Resources.Exclamation;
 			this.mnuAbout.Name = "mnuAbout";
-			this.mnuAbout.Size = new System.Drawing.Size(170, 22);
+			this.mnuAbout.Size = new System.Drawing.Size(180, 22);
 			this.mnuAbout.Text = "About";
 			this.mnuAbout.Click += new System.EventHandler(this.mnuAbout_Click);
 			// 
@@ -1335,6 +1410,19 @@
 			this.ctrlRecentGames.Size = new System.Drawing.Size(512, 265);
 			this.ctrlRecentGames.TabIndex = 1;
 			this.ctrlRecentGames.Visible = false;
+			// 
+			// mnuOnlineHelp
+			// 
+			this.mnuOnlineHelp.Image = global::Mesen.GUI.Properties.Resources.Help;
+			this.mnuOnlineHelp.Name = "mnuOnlineHelp";
+			this.mnuOnlineHelp.Size = new System.Drawing.Size(180, 22);
+			this.mnuOnlineHelp.Text = "Online Help";
+			this.mnuOnlineHelp.Click += new System.EventHandler(this.mnuOnlineHelp_Click);
+			// 
+			// toolStripMenuItem27
+			// 
+			this.toolStripMenuItem27.Name = "toolStripMenuItem27";
+			this.toolStripMenuItem27.Size = new System.Drawing.Size(177, 6);
 			// 
 			// frmMain
 			// 
@@ -1513,5 +1601,15 @@
 	  private System.Windows.Forms.ToolStripMenuItem mnuCx4Debugger;
 	  private System.Windows.Forms.ToolStripMenuItem mnuGbDebugger;
 	  private System.Windows.Forms.ToolStripSeparator sepGameboyDebugger;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGbTilemapViewer;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGbTileViewer;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGbSpriteViewer;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGbPaletteViewer;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGbEventViewer;
+	  private System.Windows.Forms.ToolStripSeparator toolStripMenuItem22;
+	  private System.Windows.Forms.ToolStripMenuItem mnuGameboyConfig;
+	  private System.Windows.Forms.ToolStripMenuItem mnuDebugLog;
+	  private System.Windows.Forms.ToolStripMenuItem mnuOnlineHelp;
+	  private System.Windows.Forms.ToolStripSeparator toolStripMenuItem27;
    }
 }

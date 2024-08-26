@@ -13,6 +13,7 @@
 #include "Sa1BwRamHandler.h"
 #include "CpuBwRamHandler.h"
 #include "MessageManager.h"
+#include "BatteryManager.h"
 #include "../Utilities/HexUtilities.h"
 
 Sa1::Sa1(Console* console) : BaseCoprocessor(SnesMemoryType::Register)
@@ -27,7 +28,6 @@ Sa1::Sa1(Console* console) : BaseCoprocessor(SnesMemoryType::Register)
 	
 	_iRam = new uint8_t[Sa1::InternalRamSize];
 	_iRamHandler.reset(new Sa1IRamHandler(_iRam));
-	_bwRamHandler.reset(new Sa1BwRamHandler(_cart->DebugGetSaveRam(), _cart->DebugGetSaveRamSize(), &_state));
 	console->GetSettings()->InitializeRam(_iRam, 0x800);
 	
 	//Register the SA1 in the CPU's memory space ($22xx-$23xx registers)
@@ -43,14 +43,17 @@ Sa1::Sa1(Console* console) : BaseCoprocessor(SnesMemoryType::Register)
 	_mappings.RegisterHandler(0x00, 0x3F, 0x0000, 0x0FFF, _iRamHandler.get());
 	_mappings.RegisterHandler(0x80, 0xBF, 0x0000, 0x0FFF, _iRamHandler.get());
 
-	for(int i = 0; i <= 0x3F; i++) {
-		//SA-1: 00-3F:6000-7FFF + 80-BF:6000-7FFF
-		_mappings.RegisterHandler(i, i, 0x6000, 0x7FFF, _bwRamHandler.get());
-		_mappings.RegisterHandler(i + 0x80, i + 0x80, 0x6000, 0x7FFF, _bwRamHandler.get());
-	}
-	for(int i = 0; i <= 0x0F; i++) {
-		//SA-1: 60-6F:0000-FFFF
-		_mappings.RegisterHandler(i + 0x60, i + 0x60, 0x0000, 0xFFFF, _bwRamHandler.get());
+	if(_cart->DebugGetSaveRamSize() > 0) {
+		_bwRamHandler.reset(new Sa1BwRamHandler(_cart->DebugGetSaveRam(), _cart->DebugGetSaveRamSize(), &_state));
+		for(int i = 0; i <= 0x3F; i++) {
+			//SA-1: 00-3F:6000-7FFF + 80-BF:6000-7FFF
+			_mappings.RegisterHandler(i, i, 0x6000, 0x7FFF, _bwRamHandler.get());
+			_mappings.RegisterHandler(i + 0x80, i + 0x80, 0x6000, 0x7FFF, _bwRamHandler.get());
+		}
+		for(int i = 0; i <= 0x0F; i++) {
+			//SA-1: 60-6F:0000-FFFF
+			_mappings.RegisterHandler(i + 0x60, i + 0x60, 0x0000, 0xFFFF, _bwRamHandler.get());
+		}
 	}
 
 	vector<unique_ptr<IMemoryHandler>> &saveRamHandlers = _cart->GetSaveRamHandlers();
@@ -610,14 +613,17 @@ void Sa1::UpdateVectorMappings()
 void Sa1::UpdateSaveRamMappings()
 {
 	vector<unique_ptr<IMemoryHandler>> &saveRamHandlers = _cart->GetSaveRamHandlers();
-	MemoryMappings* cpuMappings = _memoryManager->GetMemoryMappings();
-	uint32_t bankNumber = _state.CpuBwBank & ((_cpuBwRamHandlers.size() / 2) - 1);
-	for(int i = 0; i <= 0x3F; i++) {
-		//S-CPU: 00-3F:6000-7FFF + 80-BF:6000-7FFF
-		cpuMappings->RegisterHandler(i, i, 0x6000, 0x6FFF, saveRamHandlers[bankNumber * 2].get());
-		cpuMappings->RegisterHandler(i, i, 0x7000, 0x7FFF, saveRamHandlers[bankNumber * 2 + 1].get());
-		cpuMappings->RegisterHandler(i + 0x80, i + 0x80, 0x6000, 0x6FFF, saveRamHandlers[bankNumber * 2].get());
-		cpuMappings->RegisterHandler(i + 0x80, i + 0x80, 0x7000, 0x7FFF, saveRamHandlers[bankNumber * 2 + 1].get());
+	if(saveRamHandlers.size() > 0) {
+		MemoryMappings* cpuMappings = _memoryManager->GetMemoryMappings();
+		uint32_t bank1 = (_state.CpuBwBank * 2) % saveRamHandlers.size();
+		uint32_t bank2 = (_state.CpuBwBank * 2 + 1) % saveRamHandlers.size();
+		for(int i = 0; i <= 0x3F; i++) {
+			//S-CPU: 00-3F:6000-7FFF + 80-BF:6000-7FFF
+			cpuMappings->RegisterHandler(i, i, 0x6000, 0x6FFF, saveRamHandlers[bank1].get());
+			cpuMappings->RegisterHandler(i, i, 0x7000, 0x7FFF, saveRamHandlers[bank2].get());
+			cpuMappings->RegisterHandler(i + 0x80, i + 0x80, 0x6000, 0x6FFF, saveRamHandlers[bank1].get());
+			cpuMappings->RegisterHandler(i + 0x80, i + 0x80, 0x7000, 0x7FFF, saveRamHandlers[bank2].get());
+		}
 	}
 }
 
@@ -809,6 +815,23 @@ MemoryMappings* Sa1::GetMemoryMappings()
 {
 	return &_mappings;
 }
+
+void Sa1::LoadBattery()
+{
+	if(_cpuBwRamHandlers.empty()) {
+		//When there is no actual save RAM and the battery flag is set, IRAM is backed up instead
+		//Used by Pachi-Slot Monogatari - PAL Kougyou Special
+		_console->GetBatteryManager()->LoadBattery(".srm", _iRam, Sa1::InternalRamSize);
+	}
+}
+
+void Sa1::SaveBattery()
+{
+	if(_cpuBwRamHandlers.empty()) {
+		_console->GetBatteryManager()->SaveBattery(".srm", _iRam, Sa1::InternalRamSize);
+	}
+}
+
 
 void Sa1::Serialize(Serializer &s)
 {

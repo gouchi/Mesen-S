@@ -15,7 +15,7 @@ using System.Windows.Forms;
 
 namespace Mesen.GUI.Debugger
 {
-	public partial class frmTileViewer : BaseForm, IRefresh
+	public partial class frmTileViewer : BaseForm, IRefresh, IDebuggerWindow
 	{
 		private int[,] _layerBpp = new int[8, 4] { { 2,2,2,2 }, { 4,4,2,0 }, { 4,4,0,0 }, { 8,4,0,0 }, { 8,2,0,0 }, { 4,2,0,0 }, { 4,0,0,0 }, { 8,0,0,0 } };
 
@@ -32,10 +32,16 @@ namespace Mesen.GUI.Debugger
 		private NotificationListener _notifListener;
 
 		public ctrlScanlineCycleSelect ScanlineCycleSelect { get { return this.ctrlScanlineCycleSelect; } }
+		public CpuType CpuType { get; private set; }
 
-		public frmTileViewer()
+		public frmTileViewer(CpuType cpuType)
 		{
+			this.CpuType = cpuType;
 			InitializeComponent();
+			ctrlPaletteViewer.CpuType = cpuType;
+			if(cpuType == CpuType.Gameboy) {
+				this.Text = "GB " + this.Text;
+			}
 		}
 
 		protected override void OnLoad(EventArgs evt)
@@ -51,6 +57,7 @@ namespace Mesen.GUI.Debugger
 
 			BaseConfigForm.InitializeComboBox(cboFormat, typeof(TileFormat));
 			BaseConfigForm.InitializeComboBox(cboLayout, typeof(TileLayout));
+			BaseConfigForm.InitializeComboBox(cboBackgroundColor, typeof(TileBackground));
 			InitMemoryTypeDropdown();
 
 			InitShortcuts();
@@ -61,6 +68,7 @@ namespace Mesen.GUI.Debugger
 			cboMemoryType.SetEnumValue(config.Source);
 			cboFormat.SetEnumValue(config.Format);
 			cboLayout.SetEnumValue(config.Layout);
+			cboBackgroundColor.SetEnumValue(config.Background);
 			nudColumns.Value = config.ColumnCount;
 
 			UpdateMemoryType(config.Source);
@@ -73,7 +81,7 @@ namespace Mesen.GUI.Debugger
 			mnuAutoRefresh.Checked = config.AutoRefresh;
 			chkShowTileGrid.Checked = config.ShowTileGrid;
 			ctrlImagePanel.ImageScale = config.ImageScale;
-			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle);
+			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle, this.CpuType);
 
 			double scale = (double)ctrlPaletteViewer.Width / 176;
 			ctrlPaletteViewer.PaletteScale = (int)(11 * scale);
@@ -88,6 +96,7 @@ namespace Mesen.GUI.Debugger
 			_address = config.Address;
 			_options.Format = config.Format;
 			_options.Layout = config.Layout;
+			_options.Background = config.Background;
 			_options.Palette = config.SelectedPalette;
 			_options.Width = config.ColumnCount;
 			_options.PageSize = config.PageSize;
@@ -110,6 +119,7 @@ namespace Mesen.GUI.Debugger
 			chkShowTileGrid.Click += chkShowTileGrid_Click;
 			cboFormat.SelectedIndexChanged += cboFormat_SelectedIndexChanged;
 			cboLayout.SelectedIndexChanged += cboLayout_SelectedIndexChanged;
+			cboBackgroundColor.SelectedIndexChanged += cboBackgroundColor_SelectedIndexChanged;
 			nudColumns.ValueChanged += nudColumns_ValueChanged;
 			nudSize.ValueChanged += nudSize_ValueChanged;
 			ctrlPaletteViewer.SelectionChanged += ctrlPaletteViewer_SelectionChanged;
@@ -159,6 +169,7 @@ namespace Mesen.GUI.Debugger
 			config.Source = cboMemoryType.GetEnumValue<SnesMemoryType>();
 			config.Format = cboFormat.GetEnumValue<TileFormat>();
 			config.Layout = cboLayout.GetEnumValue<TileLayout>();
+			config.Background = cboBackgroundColor.GetEnumValue<TileBackground>();
 			config.ColumnCount = (int)nudColumns.Value;
 			config.Address = (int)nudAddress.Value;
 			config.PageSize = (int)nudSize.Value;
@@ -197,7 +208,7 @@ namespace Mesen.GUI.Debugger
 		{
 			_state = DebugApi.GetState();
 
-			if(EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy) {
+			if(this.CpuType == CpuType.Gameboy) {
 				_cgram = ctrlPaletteViewer.GetGameboyPalette();
 			} else {
 				_cgram = DebugApi.GetMemoryState(SnesMemoryType.CGRam);
@@ -251,7 +262,7 @@ namespace Mesen.GUI.Debugger
 			btnPresetBg3.Enabled = _layerBpp[_state.Ppu.BgMode, 2] > 0;
 			btnPresetBg4.Enabled = _layerBpp[_state.Ppu.BgMode, 3] > 0;
 
-			bool isGameboy = EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy;
+			bool isGameboy = this.CpuType == CpuType.Gameboy;
 			lblPresets.Visible = !isGameboy;
 			tlpPresets1.Visible = !isGameboy;
 			tlpPresets2.Visible = !isGameboy;
@@ -276,7 +287,7 @@ namespace Mesen.GUI.Debugger
 			cboMemoryType.BeginUpdate();
 			cboMemoryType.Items.Clear();
 
-			if(EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy) {
+			if(this.CpuType == CpuType.Gameboy) {
 				AddGameboyTypes();
 			} else {
 				cboMemoryType.Items.Add(ResourceHelper.GetEnumText(SnesMemoryType.VideoRam));
@@ -305,7 +316,6 @@ namespace Mesen.GUI.Debugger
 					cboMemoryType.Items.Add("-");
 					cboMemoryType.Items.Add(ResourceHelper.GetEnumText(SnesMemoryType.BsxMemoryPack));
 				}
-				AddGameboyTypes();
 			}
 
 			cboMemoryType.SelectedIndex = 0;
@@ -369,6 +379,12 @@ namespace Mesen.GUI.Debugger
 		{
 			_options.Format = cboFormat.GetEnumValue<TileFormat>();
 			UpdatePaletteControl();
+			RefreshViewer();
+		}
+		
+		private void cboBackgroundColor_SelectedIndexChanged(object sender, EventArgs e)
+		{
+			_options.Background = cboBackgroundColor.GetEnumValue<TileBackground>();
 			RefreshViewer();
 		}
 

@@ -18,6 +18,7 @@ namespace Mesen.GUI.Debugger
 {
 	public partial class frmAssembler : BaseForm
 	{
+		private CpuType _cpuType;
 		private int _startAddress;
 		private int _blockLength;
 		private bool _hasParsingErrors = false;
@@ -27,9 +28,20 @@ namespace Mesen.GUI.Debugger
 		private int _textVersion = 0;
 		private bool _updating = false;
 
-		public frmAssembler(string code = "", int startAddress = 0, int blockLength = 0)
+		public frmAssembler(CpuType? cpuType = null, string code = "", int startAddress = 0, int blockLength = 0)
 		{
+			if(cpuType != null) {
+				_cpuType = cpuType.Value;
+			} else {
+				_cpuType = EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy ? CpuType.Gameboy : CpuType.Cpu;
+			}
+
+			if(_cpuType == CpuType.Sa1) {
+				_cpuType = CpuType.Cpu;
+			}
+
 			InitializeComponent();
+			
 			txtCode.ForeColor = Color.Black;
 
 			AssemblerConfig cfg = ConfigManager.Config.Debug.Assembler;
@@ -51,7 +63,12 @@ namespace Mesen.GUI.Debugger
 			ctrlHexBox.Width = ctrlHexBox.RequiredWidth;
 			ctrlHexBox.ByteProvider = new StaticByteProvider(new byte[0]);
 
-			txtStartAddress.Text = _startAddress.ToString("X6");
+			if(_cpuType == CpuType.Gameboy) {
+				txtStartAddress.MaxLength = 4;
+				txtStartAddress.Text = _startAddress.ToString("X4");
+			} else {
+				txtStartAddress.Text = _startAddress.ToString("X6");
+			}
 		}
 
 		private void InitShortcuts()
@@ -104,7 +121,7 @@ namespace Mesen.GUI.Debugger
 			syntax.styles.Add(new TextStyle(new SolidBrush(cfg.CodeAddressColor), Brushes.Transparent, FontStyle.Regular));
 			syntax.styles.Add(new TextStyle(new SolidBrush(cfg.CodeCommentColor), Brushes.Transparent, FontStyle.Regular));
 			syntax.rules.Add(new RuleDesc() { style = syntax.styles[0], pattern = @"(\n|^)[ \t]*(?<range>[a-zA-Z]{3}[*]{0,1})( |[^:a-zA-Z])" });
-			syntax.rules.Add(new RuleDesc() { style = syntax.styles[1], pattern = @"(\n|^)[ \t]*(?<range>[a-zA-Z_]*):" });
+			syntax.rules.Add(new RuleDesc() { style = syntax.styles[1], pattern = @"(\n|^)[ \t]*(?<range>[@_a-zA-Z]+[@_a-zA-Z0-9]*):" });
 			syntax.rules.Add(new RuleDesc() { style = syntax.styles[1], pattern = @"(\n|^)[ \t]*[a-zA-Z]{3}[ \t]+[(]{0,1}(?<range>[@_a-zA-Z]([@_a-zA-Z0-9])+)" });
 			syntax.rules.Add(new RuleDesc() { style = syntax.styles[2], pattern = @"(\n|^)[ \t]*[a-zA-Z]{3}[ \t]+(?<range>#[$]{0,1}([A-Fa-f0-9])+)" });
 			syntax.rules.Add(new RuleDesc() { style = syntax.styles[3], pattern = @"(\n|^)[ \t]*[a-zA-Z]{3}[ \t]+[\[(]{0,1}(?<range>([$][A-Fa-f0-9]+)|([0-9]+))[\])]{0,1}[ \t]*(,X|,Y|,x|,y|,s|,s\),y){0,1}[\])]{0,1}" });
@@ -126,7 +143,7 @@ namespace Mesen.GUI.Debugger
 					return false;
 				} else {
 					for(int i = 0; i < ctrlHexBox.ByteProvider.Length; i++) {
-						if(DebugApi.GetMemoryValue(SnesMemoryType.CpuMemory, (UInt32)(_startAddress + i)) != ctrlHexBox.ByteProvider.ReadByte(i)) {
+						if(DebugApi.GetMemoryValue(_cpuType.ToMemoryType(), (UInt32)(_startAddress + i)) != ctrlHexBox.ByteProvider.ReadByte(i)) {
 							return false;
 						}
 					}
@@ -153,7 +170,7 @@ namespace Mesen.GUI.Debugger
 			int version = _textVersion;
 			
 			Task.Run(() => {
-				short[] byteCode = DebugApi.AssembleCode(text, (UInt32)_startAddress);
+				short[] byteCode = DebugApi.AssembleCode(_cpuType, text, (UInt32)_startAddress);
 
 				this.BeginInvoke((Action)(() => {
 					_updating = false;
@@ -184,6 +201,8 @@ namespace Mesen.GUI.Debugger
 								case AssemblerSpecialCodes.UnknownLabel: message = "Unknown label"; break;
 								case AssemblerSpecialCodes.InvalidInstruction: message = "Invalid instruction"; break;
 								case AssemblerSpecialCodes.InvalidBinaryValue: message = "Invalid binary value"; break;
+								case AssemblerSpecialCodes.InvalidOperands: message = "Invalid operands for instruction"; break;
+								case AssemblerSpecialCodes.InvalidLabel: message = "Invalid label name"; break;
 							}
 							errorList.Add(new ErrorDetail() { Message = message + " - " + codeLines[line-1], LineNumber = line });
 							line++;
@@ -264,15 +283,24 @@ namespace Mesen.GUI.Debugger
 					bytes.Add(0xEA);
 				}
 
-				DebugApi.SetMemoryValues(SnesMemoryType.CpuMemory, (UInt32)_startAddress, bytes.ToArray(), bytes.Count);
-
-				AddressInfo absStart = DebugApi.GetAbsoluteAddress(new AddressInfo() { Address = _startAddress, Type = SnesMemoryType.CpuMemory });
-				AddressInfo absEnd = DebugApi.GetAbsoluteAddress(new AddressInfo() { Address = _startAddress + bytes.Count, Type = SnesMemoryType.CpuMemory });
-				if(absStart.Type == SnesMemoryType.PrgRom && absEnd.Type == SnesMemoryType.PrgRom && (absEnd.Address - absStart.Address) == bytes.Count) {
-					DebugApi.MarkBytesAs((uint)absStart.Address, (uint)absEnd.Address, CdlFlags.Code);
+				SnesMemoryType memType;
+				SnesMemoryType prgType;
+				if(_cpuType == CpuType.Gameboy) {
+					memType = SnesMemoryType.GameboyMemory;
+					prgType = SnesMemoryType.GbPrgRom;
+				} else {
+					memType = SnesMemoryType.CpuMemory;
+					prgType = SnesMemoryType.PrgRom;
 				}
 
-				frmDebugger debugger = DebugWindowManager.OpenDebugger(CpuType.Cpu);
+				DebugApi.SetMemoryValues(memType, (UInt32)_startAddress, bytes.ToArray(), bytes.Count);
+				AddressInfo absStart = DebugApi.GetAbsoluteAddress(new AddressInfo() { Address = _startAddress, Type = memType });
+				AddressInfo absEnd = DebugApi.GetAbsoluteAddress(new AddressInfo() { Address = _startAddress + bytes.Count, Type = memType });
+				if(absStart.Type == prgType && absEnd.Type == prgType && (absEnd.Address - absStart.Address) == bytes.Count) {
+					DebugApi.MarkBytesAs(_cpuType, (uint)absStart.Address, (uint)absEnd.Address, CdlFlags.Code);
+				}
+
+				frmDebugger debugger = DebugWindowManager.OpenDebugger(_cpuType);
 				if(debugger != null) {
 					debugger.RefreshDisassembly();
 				}
@@ -374,7 +402,9 @@ namespace Mesen.GUI.Debugger
 			TrailingText = -9,
 			UnknownLabel = -10,
 			InvalidInstruction = -11,
-			InvalidBinaryValue = -12
+			InvalidBinaryValue = -12,
+			InvalidOperands = -13,
+			InvalidLabel = -14,
 		}
 
 		private void lstErrors_DoubleClick(object sender, EventArgs e)

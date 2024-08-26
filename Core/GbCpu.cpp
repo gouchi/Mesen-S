@@ -5,28 +5,16 @@
 #include "GbMemoryManager.h"
 #include "../Utilities/Serializer.h"
 
-GbCpu::GbCpu(Console* console, Gameboy* gameboy, GbMemoryManager* memoryManager)
+void GbCpu::Init(Console* console, Gameboy* gameboy, GbMemoryManager* memoryManager)
 {
 	_console = console;
 	_gameboy = gameboy;
 	_memoryManager = memoryManager;
+	
 	_state = {};
 
-#ifdef USEBOOTROM
 	_state.PC = 0;
 	_state.SP = 0xFFFF;
-#else
-	_state.PC = 0x100;
-	_state.SP = 0xFFFE;
-	_state.A = gameboy->IsCgb() ? 0x11 : 0x01;
-	_state.B = 0x00;
-	_state.C = 0x13;
-	_state.D = 0x00;
-	_state.E = 0xD8;
-	_state.H = 0x01;
-	_state.L = 0x4D;
-	_state.Flags = 0xB0;
-#endif
 }
 
 GbCpu::~GbCpu()
@@ -38,9 +26,9 @@ GbCpuState GbCpu::GetState()
 	return _state;
 }
 
-uint64_t GbCpu::GetCycleCount()
+bool GbCpu::IsHalted()
 {
-	return _state.CycleCount;
+	return _state.Halted;
 }
 
 void GbCpu::Exec()
@@ -49,18 +37,32 @@ void GbCpu::Exec()
 	if(irqVector) {
 		if(_state.IME) {
 			uint16_t oldPc = _state.PC;
-			_memoryManager->ClearIrqRequest(irqVector);
 			IncCycleCount();
 			IncCycleCount();
-			PushWord(_state.PC);
+
+			PushByte(_state.PC >> 8);
+			irqVector = _memoryManager->ProcessIrqRequests(); //Check IRQ line again before jumping (ie_push)
+			PushByte((uint8_t)_state.PC);
+
 			IncCycleCount();
+			
 			switch(irqVector) {
+				case 0:
+					//IRQ request bit is no longer set, jump to $0000 (ie_push test)
+					_state.PC = 0;
+					break;
+
 				case GbIrqSource::VerticalBlank: _state.PC = 0x40; break;
 				case GbIrqSource::LcdStat: _state.PC = 0x48; break;
 				case GbIrqSource::Timer: _state.PC = 0x50; break;
 				case GbIrqSource::Serial: _state.PC = 0x58; break;
 				case GbIrqSource::Joypad: _state.PC = 0x60; break;
 			}
+			if(irqVector) {
+				//Only clear IRQ bit if an IRQ was processed
+				_memoryManager->ClearIrqRequest(irqVector);
+			}
+
 			_state.IME = false;
 			_console->ProcessInterrupt<CpuType::Gameboy>(oldPc, _state.PC, false);
 		}
@@ -70,6 +72,11 @@ void GbCpu::Exec()
 	if(_state.Halted) {
 		IncCycleCount();
 		return;
+	}
+
+	if(_state.EiPending) {
+		_state.EiPending = false;
+		_state.IME = true;
 	}
 
 	ExecOpCode(ReadOpCode());
@@ -339,22 +346,29 @@ void GbCpu::ExecOpCode(uint8_t opCode)
 
 void GbCpu::IncCycleCount()
 {
-	_state.CycleCount += 4;
+	_memoryManager->Exec();
+	_memoryManager->Exec();
+}
+
+void GbCpu::HalfCycle()
+{
 	_memoryManager->Exec();
 }
 
 uint8_t GbCpu::ReadOpCode()
 {
-	IncCycleCount();
-	uint8_t value = _memoryManager->Read(_state.PC, MemoryOperationType::ExecOpCode);
+	HalfCycle();
+	uint8_t value = _memoryManager->Read<MemoryOperationType::ExecOpCode>(_state.PC);
+	HalfCycle();
 	_state.PC++;
 	return value;
 }
 
 uint8_t GbCpu::ReadCode()
 {
-	IncCycleCount();
-	uint8_t value = _memoryManager->Read(_state.PC, MemoryOperationType::ExecOperand);
+	HalfCycle();
+	uint8_t value = _memoryManager->Read<MemoryOperationType::ExecOperand>(_state.PC);
+	HalfCycle();
 	_state.PC++;
 	return value;
 }
@@ -368,14 +382,17 @@ uint16_t GbCpu::ReadCodeWord()
 
 uint8_t GbCpu::Read(uint16_t addr)
 {
-	IncCycleCount();
-	return _memoryManager->Read(addr, MemoryOperationType::Read);
+	HalfCycle();
+	uint8_t value = _memoryManager->Read<MemoryOperationType::Read>(addr);
+	HalfCycle();
+	return value;
 }
 
 void GbCpu::Write(uint16_t addr, uint8_t value)
 {
-	IncCycleCount();
+	HalfCycle();
 	_memoryManager->Write(addr, value);
+	HalfCycle();
 }
 
 bool GbCpu::CheckFlag(uint8_t flag)
@@ -692,7 +709,11 @@ void GbCpu::NOP()
 
 void GbCpu::InvalidOp()
 {
-	STOP();
+	//Disable all IRQs
+	_memoryManager->Write(0xFFFF, 0);
+
+	//Halt CPU to lock it up permanently
+	_state.Halted = true;
 }
 
 void GbCpu::STOP()
@@ -706,8 +727,15 @@ void GbCpu::STOP()
 
 void GbCpu::HALT()
 {
-	//TODO: HALT BUG emulation
-	_state.Halted = true;
+	if(_state.IME || _memoryManager->ProcessIrqRequests() == 0) {
+		_state.Halted = true;
+	} else {
+		//HALT bug, execution continues, but PC isn't incremented for the first byte
+		HalfCycle();
+		uint8_t opCode = _memoryManager->Read<MemoryOperationType::ExecOpCode>(_state.PC);
+		HalfCycle();
+		ExecOpCode(opCode);
+	}
 }
 
 // cpl              2F         4 -11- A = A xor FF
@@ -1001,18 +1029,18 @@ void GbCpu::JR(bool condition, int8_t offset)
 //call nn        CD nn nn    24 ---- call to nn, SP=SP-2, (SP)=PC, PC=nn
 void GbCpu::CALL(uint16_t dstAddr)
 {
+	IncCycleCount();
 	PushWord(_state.PC);
 	_state.PC = dstAddr;
-	IncCycleCount();
 }
 
 //call f,nn      xx nn nn 24;12 ---- conditional call if nz,z,nc,c
 void GbCpu::CALL(bool condition, uint16_t dstAddr)
 {
 	if(condition) {
+		IncCycleCount();
 		PushWord(_state.PC);
 		_state.PC = dstAddr;
-		IncCycleCount();
 	}
 }
 
@@ -1044,9 +1072,9 @@ void GbCpu::RETI()
 //rst  n         xx          16 ---- call to 00,08,10,18,20,28,30,38
 void GbCpu::RST(uint8_t value)
 {
+	IncCycleCount();
 	PushWord(_state.PC);
 	_state.PC = value;
-	IncCycleCount();
 }
 
 void GbCpu::POP(Register16& reg)
@@ -1056,8 +1084,8 @@ void GbCpu::POP(Register16& reg)
 
 void GbCpu::PUSH(Register16& reg)
 {
-	PushWord(reg);
 	IncCycleCount();
+	PushWord(reg);
 }
 
 void GbCpu::POP_AF()
@@ -1083,7 +1111,7 @@ void GbCpu::CCF()
 
 void GbCpu::EI()
 {
-	_state.IME = true;
+	_state.EiPending = true;
 }
 
 void GbCpu::DI()
@@ -1356,7 +1384,8 @@ void GbCpu::PREFIX()
 void GbCpu::Serialize(Serializer& s)
 {
 	s.Stream(
-		_state.CycleCount, _state.PC, _state.SP, _state.A, _state.Flags, _state.B,
-		_state.C, _state.D, _state.E, _state.H, _state.L, _state.IME, _state.Halted
+		_state.PC, _state.SP, _state.A, _state.Flags, _state.B,
+		_state.C, _state.D, _state.E, _state.H, _state.L, _state.IME, _state.Halted,
+		_state.EiPending
 	);
 }

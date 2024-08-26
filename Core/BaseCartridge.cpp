@@ -21,6 +21,7 @@
 #include "BsxMemoryPack.h"
 #include "FirmwareHelper.h"
 #include "SpcFileData.h"
+#include "SuperGameboy.h"
 #include "Gameboy.h"
 #include "../Utilities/HexUtilities.h"
 #include "../Utilities/VirtualFile.h"
@@ -50,8 +51,8 @@ shared_ptr<BaseCartridge> BaseCartridge::CreateCartridge(Console* console, Virtu
 
 		vector<uint8_t> romData;
 		romFile.ReadFile(romData);
-		
-		if(romData.size() < 0x8000) {
+
+		if(romData.size() < 0x4000) {
 			return nullptr;
 		}
 
@@ -65,12 +66,16 @@ shared_ptr<BaseCartridge> BaseCartridge::CreateCartridge(Console* console, Virtu
 				return nullptr;
 			}
 		} else if(fileExt == ".gb" || fileExt == ".gbc") {
-			if(cart->LoadGameboy(romFile)) {
+			if(cart->LoadGameboy(romFile, true)) {
 				return cart;
 			} else {
 				return nullptr;
 			}			
 		} else {
+			if(romData.size() < 0x8000) {
+				return nullptr;
+			}
+
 			cart->_prgRomSize = (uint32_t)romData.size();
 			if((cart->_prgRomSize & 0xFFF) != 0) {
 				//Round up to the next 4kb size, to ensure we have access to all the rom's data
@@ -239,7 +244,14 @@ CoprocessorType BaseCartridge::GetCoprocessorType()
 			case 0x03: return CoprocessorType::SA1;
 			case 0x04: return CoprocessorType::SDD1;
 			case 0x05: return CoprocessorType::RTC;
-			case 0x0E: return CoprocessorType::Satellaview;
+			case 0x0E: 
+				switch(_cartInfo.RomType) {
+					case 0xE3: return CoprocessorType::SGB;
+					case 0xE5: return CoprocessorType::Satellaview;
+					default: return CoprocessorType::None;
+				}
+				break;
+
 			case 0x0F:
 				switch(_cartInfo.CartridgeType) {
 					case 0x00: 
@@ -259,6 +271,8 @@ CoprocessorType BaseCartridge::GetCoprocessorType()
 				}
 				break;
 		}
+	} else if(GetGameCode() == "042J") {
+		return CoprocessorType::SGB;
 	}
 
 	return CoprocessorType::None;
@@ -313,14 +327,35 @@ RomInfo BaseCartridge::GetRomInfo()
 	return info;
 }
 
+vector<uint8_t> BaseCartridge::GetOriginalPrgRom()
+{
+	RomInfo romInfo = GetRomInfo();
+	shared_ptr<BaseCartridge> originalCart = BaseCartridge::CreateCartridge(_console, romInfo.RomFile, romInfo.PatchFile);
+	if(originalCart->_gameboy) {
+		uint8_t* orgPrgRom = originalCart->_gameboy->DebugGetMemory(SnesMemoryType::GbPrgRom);
+		uint32_t orgRomSize = originalCart->_gameboy->DebugGetMemorySize(SnesMemoryType::GbPrgRom);
+		return vector<uint8_t>(orgPrgRom, orgPrgRom + orgRomSize);
+	} else {
+		return vector<uint8_t>(originalCart->DebugGetPrgRom(), originalCart->DebugGetPrgRom() + originalCart->DebugGetPrgRomSize());
+	}
+}
+
 uint32_t BaseCartridge::GetCrc32()
 {
-	return CRC32::GetCRC(_prgRom, _prgRomSize);
+	if(_gameboy) {
+		return CRC32::GetCRC(_gameboy->DebugGetMemory(SnesMemoryType::GbPrgRom), _gameboy->DebugGetMemorySize(SnesMemoryType::GbPrgRom));
+	} else {
+		return CRC32::GetCRC(_prgRom, _prgRomSize);
+	}
 }
 
 string BaseCartridge::GetSha1Hash()
 {
-	return SHA1::GetHash(_prgRom, _prgRomSize);
+	if(_gameboy) {
+		return SHA1::GetHash(_gameboy->DebugGetMemory(SnesMemoryType::GbPrgRom), _gameboy->DebugGetMemorySize(SnesMemoryType::GbPrgRom));
+	} else {
+		return SHA1::GetHash(_prgRom, _prgRomSize);
+	}
 }
 
 CartFlags::CartFlags BaseCartridge::GetCartFlags()
@@ -471,9 +506,11 @@ void BaseCartridge::InitCoprocessor()
 	if(_coprocessorType == CoprocessorType::SA1) {
 		_coprocessor.reset(new Sa1(_console));
 		_sa1 = dynamic_cast<Sa1*>(_coprocessor.get());
+		_needCoprocSync = true;
 	} else if(_coprocessorType == CoprocessorType::GSU) {
 		_coprocessor.reset(new Gsu(_console, _coprocessorRamSize));
 		_gsu = dynamic_cast<Gsu*>(_coprocessor.get());
+		_needCoprocSync = true;
 	} else if(_coprocessorType == CoprocessorType::SDD1) {
 		_coprocessor.reset(new Sdd1(_console));
 	} else if(_coprocessorType == CoprocessorType::SPC7110) {
@@ -493,8 +530,13 @@ void BaseCartridge::InitCoprocessor()
 	} else if(_coprocessorType == CoprocessorType::CX4) {
 		_coprocessor.reset(new Cx4(_console));
 		_cx4 = dynamic_cast<Cx4*>(_coprocessor.get());
+		_needCoprocSync = true;
 	} else if(_coprocessorType == CoprocessorType::OBC1 && _saveRamSize > 0) {
 		_coprocessor.reset(new Obc1(_console, _saveRam, _saveRamSize));
+	} else if(_coprocessorType == CoprocessorType::SGB) {
+		_coprocessor.reset(new SuperGameboy(_console));
+		_sgb = dynamic_cast<SuperGameboy*>(_coprocessor.get());
+		_needCoprocSync = true;
 	}
 }
 
@@ -578,16 +620,32 @@ void BaseCartridge::LoadSpc()
 	SetupCpuHalt();
 }
 
-bool BaseCartridge::LoadGameboy(VirtualFile &romFile)
+bool BaseCartridge::LoadGameboy(VirtualFile &romFile, bool sgbEnabled)
 {
-	_gameboy.reset(Gameboy::Create(_console, romFile));
+	_gameboy.reset(Gameboy::Create(_console, romFile, sgbEnabled));
 	if(!_gameboy) {
 		return false;
 	}
 
 	_cartInfo = { };
-	_coprocessorType = CoprocessorType::Gameboy;
-	SetupCpuHalt();
+	_headerOffset = Gameboy::HeaderOffset;
+
+	if(_gameboy->IsSgb()) {
+		GameboyConfig cfg = _console->GetSettings()->GetGameboyConfig();
+		if(FirmwareHelper::LoadSgbFirmware(_console, &_prgRom, _prgRomSize, cfg.UseSgb2)) {
+			LoadRom();
+			if(_coprocessorType != CoprocessorType::SGB) {
+				//SGB bios file isn't a recognized SGB bios, try again without SGB mode
+				return LoadGameboy(romFile, false);
+			}
+		} else {
+			//Couldn't load the SGB bios, try again with in GB/GBC mode
+			return LoadGameboy(romFile, false);
+		}
+	} else {
+		_coprocessorType = CoprocessorType::Gameboy;
+		SetupCpuHalt();
+	}
 	return true;
 }
 
@@ -712,6 +770,7 @@ void BaseCartridge::DisplayCartInfo()
 			case CoprocessorType::ST011: coProcMessage += "ST011"; break;
 			case CoprocessorType::ST018: coProcMessage += "ST018"; break;
 			case CoprocessorType::Gameboy: coProcMessage += "Game Boy"; break;
+			case CoprocessorType::SGB: coProcMessage += "Super Game Boy"; break;
 		}
 		MessageManager::Log(coProcMessage);
 	}
@@ -733,7 +792,10 @@ void BaseCartridge::DisplayCartInfo()
 		MessageManager::Log("SRAM size: " + std::to_string(_saveRamSize / 1024) + " KB" + (_hasBattery ? " (with battery)" : ""));
 	}
 	if(_coprocessorRamSize > 0) {
-		MessageManager::Log("Coprocessor RAM size: " + std::to_string(_coprocessorRamSize / 1024) + " KB" + (_hasBattery ? " (with battery)" : ""));
+		MessageManager::Log("Coprocessor RAM size: " + std::to_string(_coprocessorRamSize / 1024) + " KB");
+	}
+	if(_hasBattery) {
+		MessageManager::Log("Battery: yes");
 	}
 	MessageManager::Log("-----------------------------");
 }
@@ -751,6 +813,11 @@ Sa1* BaseCartridge::GetSa1()
 Cx4* BaseCartridge::GetCx4()
 {
 	return _cx4;
+}
+
+SuperGameboy* BaseCartridge::GetSuperGameboy()
+{
+	return _sgb;
 }
 
 BsxCart* BaseCartridge::GetBsx()

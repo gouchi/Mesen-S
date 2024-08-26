@@ -2,6 +2,7 @@
 #include "stdafx.h"
 #include "CartTypes.h"
 #include "DebugTypes.h"
+#include "Debugger.h"
 #include "ConsoleLock.h"
 #include "../Utilities/Timer.h"
 #include "../Utilities/VirtualFile.h"
@@ -36,6 +37,7 @@ enum class MemoryOperationType;
 enum class SnesMemoryType;
 enum class EventType;
 enum class ConsoleRegion;
+enum class ConsoleType;
 
 class Console : public std::enable_shared_from_this<Console>
 {
@@ -81,6 +83,7 @@ private:
 	atomic<bool> _threadPaused;
 
 	ConsoleRegion _region;
+	ConsoleType _consoleType;
 	uint32_t _masterClockRate;
 
 	atomic<bool> _isRunAheadFrame;
@@ -129,6 +132,7 @@ public:
 	uint64_t GetMasterClock();
 	uint32_t GetMasterClockRate();
 	ConsoleRegion GetRegion();
+	ConsoleType GetConsoleType();
 
 	ConsoleLock AcquireLock();
 	void Lock();
@@ -172,13 +176,63 @@ public:
 	uint32_t GetFrameCount();	
 	double GetFps();
 
-	template<CpuType type> void ProcessMemoryRead(uint32_t addr, uint8_t value, MemoryOperationType opType);
-	template<CpuType type> void ProcessMemoryWrite(uint32_t addr, uint8_t value, MemoryOperationType opType);
-	void ProcessPpuRead(uint32_t addr, uint8_t value, SnesMemoryType memoryType);
-	void ProcessPpuWrite(uint32_t addr, uint8_t value, SnesMemoryType memoryType);
-	void ProcessWorkRamRead(uint32_t addr, uint8_t value);
-	void ProcessWorkRamWrite(uint32_t addr, uint8_t value);
-	void ProcessPpuCycle(uint16_t scanline, uint16_t cycle);
+	template<CpuType type> __forceinline void ProcessMemoryRead(uint32_t addr, uint8_t value, MemoryOperationType opType)
+	{
+		if(_debugger) {
+			_debugger->ProcessMemoryRead<type>(addr, value, opType);
+		}
+	}
+
+	template<CpuType type> __forceinline void ProcessMemoryWrite(uint32_t addr, uint8_t value, MemoryOperationType opType)
+	{
+		if(_debugger) {
+			_debugger->ProcessMemoryWrite<type>(addr, value, opType);
+		}
+	}
+
+	__forceinline void ProcessPpuRead(uint32_t addr, uint8_t value, SnesMemoryType memoryType)
+	{
+		if(_debugger) {
+			_debugger->ProcessPpuRead(addr, value, memoryType);
+		}
+	}
+
+	__forceinline void ProcessPpuWrite(uint32_t addr, uint8_t value, SnesMemoryType memoryType)
+	{
+		if(_debugger) {
+			_debugger->ProcessPpuWrite(addr, value, memoryType);
+		}
+	}
+
+	__forceinline void ProcessWorkRamRead(uint32_t addr, uint8_t value)
+	{
+		if(_debugger) {
+			_debugger->ProcessWorkRamRead(addr, value);
+		}
+	}
+
+	__forceinline void ProcessWorkRamWrite(uint32_t addr, uint8_t value)
+	{
+		if(_debugger) {
+			_debugger->ProcessWorkRamWrite(addr, value);
+		}
+	}
+	
+	template<CpuType cpuType> __forceinline void ProcessPpuCycle()
+	{
+		if(_debugger) {
+			_debugger->ProcessPpuCycle<cpuType>();
+		}
+	}
+
+	__forceinline void DebugLog(string log)
+	{
+		if(_debugger) {
+			_debugger->Log(log);
+		}
+	}
+
 	template<CpuType type> void ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, bool forNmi);
 	void ProcessEvent(EventType type);
+	void BreakImmediately(BreakSource source);
 };

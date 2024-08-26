@@ -7,9 +7,7 @@
 #include "MemoryManager.h"
 #include "NotificationManager.h"
 #include "DefaultVideoFilter.h"
-#include "Gameboy.h"
 #include "GbTypes.h"
-#include "GbPpu.h"
 
 PpuTools::PpuTools(Console *console, Ppu *ppu)
 {
@@ -90,10 +88,18 @@ void PpuTools::GetTileView(GetTileViewOptions options, uint8_t *source, uint32_t
 
 	int bytesPerTile = 64 * bpp / 8;
 	int tileCount = options.PageSize / bytesPerTile;
-	
-	uint16_t bgColor = (cgram[1] << 8) | cgram[0];
+
+	uint32_t bgColor = 0;
+	switch(options.Background) {
+		case TileBackground::Default: bgColor = DefaultVideoFilter::ToArgb((cgram[1] << 8) | cgram[0]); break;
+		case TileBackground::PaletteColor: bgColor = DefaultVideoFilter::ToArgb(0); break;
+		case TileBackground::Black: bgColor = DefaultVideoFilter::ToArgb(0); break;
+		case TileBackground::White: bgColor = DefaultVideoFilter::ToArgb(0x7FFF); break;
+		case TileBackground::Magenta: bgColor = DefaultVideoFilter::ToArgb(0x7C1F); break;
+	}
+
 	for(uint32_t i = 0; i < outputSize / sizeof(uint32_t); i++) {
-		outBuffer[i] = DefaultVideoFilter::ToArgb(bgColor);
+		outBuffer[i] = bgColor;
 	}
 
 	int rowCount = (int)std::ceil((double)tileCount / options.Width);
@@ -124,7 +130,7 @@ void PpuTools::GetTileView(GetTileViewOptions options, uint8_t *source, uint32_t
 					for(int x = 0; x < 8; x++) {
 						uint8_t color = ram[(pixelStart + x * 2 + 1) & ramMask];
 
-						if(color != 0) {
+						if(color != 0 || options.Background == TileBackground::PaletteColor) {
 							uint32_t rgbColor;
 							if(directColor) {
 								rgbColor = DefaultVideoFilter::ToArgb(((color & 0x07) << 2) | ((color & 0x38) << 4) | ((color & 0xC0) << 7));
@@ -140,7 +146,7 @@ void PpuTools::GetTileView(GetTileViewOptions options, uint8_t *source, uint32_t
 					uint32_t pixelStart = addr + y * 2;
 					for(int x = 0; x < 8; x++) {
 						uint8_t color = GetTilePixelColor(ram, ramMask, bpp, pixelStart, 7 - x);
-						if(color != 0) {
+						if(color != 0 || options.Background == TileBackground::PaletteColor) {
 							outBuffer[baseOutputOffset + (y*options.Width*8) + x] = GetRgbPixelColor(cgram, color, options.Palette, bpp, directColor, 0);
 						}
 					}
@@ -273,11 +279,7 @@ void PpuTools::GetSpritePreview(GetSpritePreviewOptions options, PpuState state,
 			uint8_t largeSprite = (highTableValue & 0x02) >> 1;
 			uint8_t height = _oamSizes[state.OamMode][largeSprite][1] << 3;
 
-			if(state.ObjInterlace) {
-				height /= 2;
-			}
-
-			uint8_t endY = (y + height) & 0xFF;
+			uint8_t endY = (y + (state.ObjInterlace ? (height >> 1): height)) & 0xFF;
 
 			bool visible = (screenY >= y && screenY < endY) || (endY < y && screenY < endY);
 			if(!visible) {
@@ -311,7 +313,9 @@ void PpuTools::GetSpritePreview(GetSpritePreviewOptions options, PpuState state,
 			int yGap = (screenY - y);
 			if(state.ObjInterlace) {
 				yGap <<= 1;
+				yGap |= (state.FrameCount & 0x01);
 			}
+
 			if(verticalMirror) {
 				yOffset = (height - 1 - yGap) & 0x07;
 				rowOffset = (height - 1 - yGap) >> 3;
@@ -354,10 +358,14 @@ void PpuTools::GetSpritePreview(GetSpritePreviewOptions options, PpuState state,
 	}
 }
 
-void PpuTools::SetViewerUpdateTiming(uint32_t viewerId, uint16_t scanline, uint16_t cycle)
+void PpuTools::SetViewerUpdateTiming(uint32_t viewerId, uint16_t scanline, uint16_t cycle, CpuType cpuType)
 {
 	//TODO Thread safety
-	_updateTimings[viewerId] = (scanline << 16) | cycle;
+	ViewerRefreshConfig cfg;
+	cfg.Scanline = scanline;
+	cfg.Cycle = cycle;
+	cfg.Type = cpuType;
+	_updateTimings[viewerId] = cfg;
 }
 
 void PpuTools::RemoveViewer(uint32_t viewerId)
@@ -366,26 +374,11 @@ void PpuTools::RemoveViewer(uint32_t viewerId)
 	_updateTimings.erase(viewerId);
 }
 
-void PpuTools::UpdateViewers(uint16_t scanline, uint16_t cycle)
+void PpuTools::GetGameboyTilemap(uint8_t* vram, GbPpuState& state, uint16_t offset, uint32_t* outBuffer)
 {
-	uint32_t currentCycle = (scanline << 16) | cycle;
-	for(auto updateTiming : _updateTimings) {
-		if(updateTiming.second == currentCycle) {
-			_console->GetNotificationManager()->SendNotification(ConsoleNotificationType::ViewerRefresh, (void*)(uint64_t)updateTiming.first);
-		}
-	}
-}
+	bool isCgb = state.CgbEnabled;
 
-void PpuTools::GetGameboyTilemap(uint8_t* vram, uint16_t offset, uint32_t* outBuffer)
-{
-	Gameboy* gameboy = _console->GetCartridge()->GetGameboy();
-	GbState state = gameboy->GetState();
-	bool isCgb = state.Type == GbType::Cgb;
-
-	uint16_t palette[4];
-	gameboy->GetPpu()->GetPalette(palette, state.Ppu.BgPalette);
-
-	uint16_t baseTile = state.Ppu.BgTileSelect ? 0 : 0x1000;
+	uint16_t baseTile = state.BgTileSelect ? 0 : 0x1000;
 
 	std::fill(outBuffer, outBuffer + 1024*256, 0xFFFFFFFF);
 
@@ -415,11 +408,71 @@ void PpuTools::GetGameboyTilemap(uint8_t* vram, uint16_t offset, uint32_t* outBu
 					uint8_t shift = hMirror ? (x & 0x07) : (7 - (x & 0x07));
 					uint8_t color = GetTilePixelColor(vram, vramMask, 2, pixelStart, shift);
 
-					if(isCgb) {
-						outBuffer[((row * 8) + y) * 1024 + column * 8 + x] = DefaultVideoFilter::ToArgb(state.Ppu.CgbBgPalettes[bgPalette + color]);
-					} else if(color != 0) {
-						outBuffer[((row * 8) + y) * 1024 + column * 8 + x] = DefaultVideoFilter::ToArgb(palette[color]);
-					}					
+					outBuffer[((row * 8) + y) * 1024 + column * 8 + x] = DefaultVideoFilter::ToArgb(state.CgbBgPalettes[bgPalette + color]);
+				}
+			}
+		}
+	}
+}
+
+void PpuTools::GetGameboySpritePreview(GetSpritePreviewOptions options, GbPpuState state, uint8_t* vram, uint8_t* oamRam, uint32_t* outBuffer)
+{
+	std::fill(outBuffer, outBuffer + 256 * 256, 0xFF333311);
+	for(int i = 16; i < 16 + 144; i++) {
+		std::fill(outBuffer + i * 256 + 8, outBuffer + i * 256 + 168, 0xFF888866);
+	}
+
+	bool isCgb = state.CgbEnabled;
+	bool largeSprites = state.LargeSprites;
+	uint8_t height = largeSprites ? 16 : 8;
+	constexpr uint8_t width = 8;
+
+	uint8_t filled[256];
+	for(int row = 0; row < 256; row++) {
+		std::fill(filled, filled + 256, 0xFF);
+
+		for(int i = 0; i < 0xA0; i += 4) {
+			uint8_t sprY = oamRam[i];
+			if(sprY > row || sprY + height <= row) {
+				continue;
+			}
+
+			int y = row - sprY;
+			uint8_t sprX = oamRam[i + 1];
+			uint8_t tileIndex = oamRam[i + 2];
+			uint8_t attributes = oamRam[i + 3];
+
+			uint16_t tileBank = isCgb ? ((attributes & 0x08) ? 0x2000 : 0x0000) : 0;
+			uint8_t palette = isCgb ? (attributes & 0x07) << 2 : 0;
+			bool hMirror = (attributes & 0x20) != 0;
+			bool vMirror = (attributes & 0x40) != 0;
+
+			if(largeSprites) {
+				tileIndex &= 0xFE;
+			}
+
+			uint16_t tileStart = tileIndex * 16;
+			tileStart |= tileBank;
+
+			uint16_t pixelStart = tileStart + (vMirror ? (height - 1 - y) : y) * 2;
+			for(int x = 0; x < width; x++) {
+				if(sprX + x >= 256) {
+					break;
+				} else if(filled[sprX + x] < sprX) {
+					continue;
+				}
+
+				uint8_t shift = hMirror ? (x & 0x07) : (7 - (x & 0x07));
+				uint8_t color = GetTilePixelColor(vram, 0x3FFF, 2, pixelStart, shift);
+
+				if(color > 0) {
+					if(!isCgb) {
+						color = (((attributes & 0x10) ? state.ObjPalette1 : state.ObjPalette0) >> (color * 2)) & 0x03;
+					}
+
+					uint32_t outOffset = (row * 256) + sprX + x;
+					outBuffer[outOffset] = DefaultVideoFilter::ToArgb(state.CgbObjPalettes[palette + color]);
+					filled[sprX + x] = sprX;
 				}
 			}
 		}

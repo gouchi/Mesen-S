@@ -16,6 +16,7 @@
 #include "../Core/EmuSettings.h"
 #include "../Core/SaveStateManager.h"
 #include "../Core/CheatManager.h"
+#include "../Core/SettingTypes.h"
 #include "../Utilities/snes_ntsc.h"
 #include "../Utilities/FolderUtilities.h"
 #include "../Utilities/HexUtilities.h"
@@ -50,6 +51,8 @@ static constexpr const char* MesenRamState = "mesen-s_ramstate";
 static constexpr const char* MesenOverclock = "mesen-s_overclock";
 static constexpr const char* MesenOverclockType = "mesen-s_overclock_type";
 static constexpr const char* MesenSuperFxOverclock = "mesen-s_superfx_overclock";
+static constexpr const char* MesenGbModel = "mesen-s_gbmodel";
+static constexpr const char* MesenGbSgb2 = "mesen-s_sgb2";
 
 extern "C" {
 	void logMessage(retro_log_level level, const char* message)
@@ -112,6 +115,8 @@ extern "C" {
 		static constexpr struct retro_variable vars[] = {
 			{ MesenNtscFilter, "NTSC filter; Disabled|Composite (Blargg)|S-Video (Blargg)|RGB (Blargg)|Monochrome (Blargg)" },
 			{ MesenRegion, "Region; Auto|NTSC|PAL" },
+			{ MesenGbModel, "Game Boy Model; Auto|Game Boy|Game Boy Color|Super Game Boy" },
+			{ MesenGbSgb2, "Use SGB2; enabled|disabled" },
 			{ MesenOverscanVertical, "Vertical Overscan; None|8px|16px" },
 			{ MesenOverscanHorizontal, "Horizontal Overscan; None|8px|16px" },
 			{ MesenAspectRatio, "Aspect Ratio; Auto|No Stretching|NTSC|PAL|4:3|16:9" },
@@ -210,10 +215,12 @@ extern "C" {
 	void update_settings()
 	{
 		struct retro_variable var = { };
-		VideoConfig video = _console->GetSettings()->GetVideoConfig();
-		AudioConfig audio = _console->GetSettings()->GetAudioConfig();
-		EmulationConfig emulation = _console->GetSettings()->GetEmulationConfig();
-		InputConfig input = _console->GetSettings()->GetInputConfig();
+		shared_ptr<EmuSettings> settings = _console->GetSettings();
+		VideoConfig video = settings->GetVideoConfig();
+		AudioConfig audio = settings->GetAudioConfig();
+		EmulationConfig emulation = settings->GetEmulationConfig();
+		GameboyConfig gbConfig = settings->GetGameboyConfig();
+		InputConfig input = settings->GetInputConfig();
 		video.Brightness = 0;
 		video.Contrast = 0;
 		video.Hue = 0;
@@ -388,6 +395,24 @@ extern "C" {
 			audio.EnableCubicInterpolation = (value == "enabled");
 		}
 
+		if(readVariable(MesenGbModel, var)) {
+			string value = string(var.value);
+			if(value == "Game Boy") {
+				gbConfig.Model = GameboyModel::Gameboy;
+			} else if(value == "Game Boy Color") {
+				gbConfig.Model = GameboyModel::GameboyColor;
+			} else if(value == "Super Game Boy") {
+				gbConfig.Model = GameboyModel::SuperGameboy;
+			} else {
+				gbConfig.Model = GameboyModel::Auto;
+			}
+		}
+
+		if(readVariable(MesenGbSgb2, var)) {
+			string value = string(var.value);
+			gbConfig.UseSgb2 = (value == "enabled");
+		}
+
 		auto getKeyCode = [=](int port, int retroKey) {
 			return (port << 8) | (retroKey + 1);
 		};
@@ -418,10 +443,11 @@ extern "C" {
 		input.Controllers[2].Keys = getKeyBindings(2);
 		input.Controllers[3].Keys = getKeyBindings(3);
 
-		_console->GetSettings()->SetVideoConfig(video);
-		_console->GetSettings()->SetEmulationConfig(emulation);
-		_console->GetSettings()->SetInputConfig(input);
-		_console->GetSettings()->SetAudioConfig(audio);
+		settings->SetVideoConfig(video);
+		settings->SetEmulationConfig(emulation);
+		settings->SetInputConfig(input);
+		settings->SetAudioConfig(audio);
+		settings->SetGameboyConfig(gbConfig);
 
 		retro_system_av_info avInfo = {};
 		_renderer->GetSystemAudioVideoInfo(avInfo);
@@ -562,9 +588,44 @@ extern "C" {
 
 		_console->GetSettings()->SetInputConfig(input);
 	}
-	
+
 	void retro_set_memory_maps()
 	{
+		shared_ptr<BaseCartridge> cart = _console->GetCartridge();
+		Gameboy* gb = cart->GetGameboy();
+		if(gb) {
+			retro_memory_descriptor descriptors[20] = {};
+			uint32_t count = 0;
+
+			auto addDescriptor = [&count, &descriptors](uint8_t* ptr, uint32_t address, uint32_t length) {
+				descriptors[count].ptr = ptr;
+				descriptors[count].start = (size_t)address;
+				descriptors[count].len = (size_t)length;
+				count++;
+			};
+
+			addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbPrgRom), 0x0000, std::min(0x8000, (int)gb->DebugGetMemorySize(SnesMemoryType::GbPrgRom)));
+			addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbVideoRam), 0x8000, 0x2000);
+			if(gb->DebugGetMemory(SnesMemoryType::GbCartRam)) {
+				uint32_t size = std::min(0x2000u, gb->DebugGetMemorySize(SnesMemoryType::GbCartRam));
+				addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbCartRam), 0xA000, size);
+			}
+
+			addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbWorkRam), 0xC000, 0x2000);
+			addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbWorkRam), 0xE000, 0x1E00); //WRAM Mirror
+
+			addDescriptor(gb->DebugGetMemory(SnesMemoryType::GbHighRam), 0xFF80, 0x80);
+
+			if(gb->DebugGetMemorySize(SnesMemoryType::GbWorkRam) == 0x8000) {
+				//GBC - map extra work ram at "fake" 0x10000-0x16000 range
+				addDescriptor(gb->DebugGetMemory(SnesMemoryType::WorkRam) + 0x2000, 0x10000, 0x6000);
+			}
+
+			retro_memory_map memoryMap = {};
+			memoryMap.descriptors = descriptors;
+			memoryMap.num_descriptors = count;
+			retroEnv(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, &memoryMap);
+		}
 	}
 
 	RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device)
@@ -657,7 +718,7 @@ extern "C" {
 		info->library_name = "Mesen-S";
 		info->library_version = _mesenVersion.c_str();
 		info->need_fullpath = false;
-		info->valid_extensions = "sfc|smc|fig|swc";
+		info->valid_extensions = "sfc|smc|fig|swc|gb|gbc|bs";
 		info->block_extract = false;
 	}
 
@@ -669,7 +730,7 @@ extern "C" {
 	RETRO_API void *retro_get_memory_data(unsigned id)
 	{
 		shared_ptr<BaseCartridge> cart = _console->GetCartridge();
-		if(_console->GetSettings()->CheckFlag(EmulationFlags::GameboyMode)) {
+		if(cart->GetGameboy()) {
 			switch(id) {
 				case RETRO_MEMORY_SAVE_RAM: return cart->GetGameboy()->DebugGetMemory(SnesMemoryType::GbCartRam);
 				case RETRO_MEMORY_SYSTEM_RAM: return cart->GetGameboy()->DebugGetMemory(SnesMemoryType::GbWorkRam);
@@ -686,7 +747,7 @@ extern "C" {
 	RETRO_API size_t retro_get_memory_size(unsigned id)
 	{
 		shared_ptr<BaseCartridge> cart = _console->GetCartridge();
-		if(_console->GetSettings()->CheckFlag(EmulationFlags::GameboyMode)) {
+		if(cart->GetGameboy()) {
 			switch(id) {
 				case RETRO_MEMORY_SAVE_RAM: return cart->GetGameboy()->DebugGetMemorySize(SnesMemoryType::GbCartRam);
 				case RETRO_MEMORY_SYSTEM_RAM: return cart->GetGameboy()->DebugGetMemorySize(SnesMemoryType::GbWorkRam);

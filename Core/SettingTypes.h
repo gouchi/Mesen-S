@@ -270,6 +270,21 @@ enum class ConsoleRegion
 	Pal = 2
 };
 
+enum class ConsoleType
+{
+	Snes = 0,
+	Gameboy = 1,
+	GameboyColor = 2
+};
+
+enum class GameboyModel
+{
+	Auto = 0,
+	Gameboy = 1,
+	GameboyColor = 2,
+	SuperGameboy = 3
+};
+
 struct EmulationConfig
 {
 	uint32_t EmulationSpeed = 100;
@@ -290,6 +305,24 @@ struct EmulationConfig
 	RamState RamPowerOnState = RamState::Random;
 
 	int64_t BsxCustomDate = -1;
+};
+
+struct GameboyConfig
+{
+	GameboyModel Model = GameboyModel::Auto;
+	bool UseSgb2 = true;
+
+	bool BlendFrames = true;
+	bool GbcAdjustColors = true;
+
+	uint32_t BgColors[4] = { 0xFFFFFF, 0xB0B0B0, 0x686868, 0x000000 };
+	uint32_t Obj0Colors[4] = { 0xFFFFFF, 0xB0B0B0, 0x686868, 0x000000 };
+	uint32_t Obj1Colors[4] = { 0xFFFFFF, 0xB0B0B0, 0x686868, 0x000000 };
+
+	uint32_t Square1Vol = 100;
+	uint32_t Square2Vol = 100;
+	uint32_t NoiseVol = 100;
+	uint32_t WaveVol = 100;
 };
 
 struct PreferencesConfig
@@ -361,6 +394,10 @@ enum class EmulatorShortcut
 
 	// Everything below this is handled UI-side
 	TakeScreenshot,
+
+	ToggleRecordVideo,
+	ToggleRecordAudio,
+	ToggleRecordMovie,
 
 	IncreaseSpeed,
 	DecreaseSpeed,
@@ -493,6 +530,13 @@ enum class DebuggerFlags : uint32_t
 	UseLowerCaseDisassembly = 0x2000,
 	
 	AutoResetCdl = 0x4000,
+
+	GbBreakOnInvalidOamAccess = 0x10000,
+	GbBreakOnInvalidVramAccess = 0x20000,
+	GbBreakOnDisableLcdOutsideVblank = 0x40000,
+	GbBreakOnInvalidOpCode = 0x80000,
+	GbBreakOnNopLoad = 0x100000,
+	GbBreakOnOamCorruption = 0x200000,
 
 	GbDebuggerEnabled = 0x02000000,
 	Cx4DebuggerEnabled = 0x04000000,

@@ -16,9 +16,9 @@ using System.Windows.Forms;
 
 namespace Mesen.GUI.Debugger
 {
-	public partial class frmSpriteViewer : BaseForm, IRefresh
+	public partial class frmSpriteViewer : BaseForm, IRefresh, IDebuggerWindow
 	{
-		private PpuState _state;
+		private DebugState _state;
 		private byte[] _vram;
 		private byte[] _cgram;
 		private byte[] _oamRam;
@@ -26,12 +26,17 @@ namespace Mesen.GUI.Debugger
 		private Bitmap _previewImage;
 		private GetSpritePreviewOptions _options = new GetSpritePreviewOptions();
 		private WindowRefreshManager _refreshManager;
-
+		
+		public CpuType CpuType { get; private set; }
 		public ctrlScanlineCycleSelect ScanlineCycleSelect { get { return this.ctrlScanlineCycleSelect; } }
 
-		public frmSpriteViewer()
+		public frmSpriteViewer(CpuType cpuType)
 		{
+			this.CpuType = cpuType;
 			InitializeComponent();
+			if(cpuType == CpuType.Gameboy) {
+				this.Text = "GB " + this.Text;
+			}
 		}
 
 		protected override void OnLoad(EventArgs e)
@@ -40,11 +45,6 @@ namespace Mesen.GUI.Debugger
 			if(DesignMode) {
 				return;
 			}
-
-			_previewData = new byte[256 * 240 * 4];
-			_previewImage = new Bitmap(256, 240, PixelFormat.Format32bppPArgb);
-			ctrlImagePanel.ImageSize = new Size(256, 240);
-			ctrlImagePanel.Image = _previewImage;
 
 			InitShortcuts();
 
@@ -62,7 +62,7 @@ namespace Mesen.GUI.Debugger
 			mnuAutoRefresh.Checked = config.AutoRefresh;
 			ctrlImagePanel.ImageScale = config.ImageScale;
 			ctrlSplitContainer.SplitterDistance = config.SplitterDistance;
-			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle);
+			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle, this.CpuType);
 			ctrlSpriteList.HideOffscreenSprites = config.HideOffscreenSprites;
 
 			RefreshData();
@@ -102,27 +102,39 @@ namespace Mesen.GUI.Debugger
 
 		public void RefreshData()
 		{
-			_state = DebugApi.GetState().Ppu;
-			_vram = DebugApi.GetMemoryState(SnesMemoryType.VideoRam);
-			_oamRam = DebugApi.GetMemoryState(SnesMemoryType.SpriteRam);
+			_state = DebugApi.GetState();
+			_vram = DebugApi.GetMemoryState(this.CpuType == CpuType.Gameboy ? SnesMemoryType.GbVideoRam : SnesMemoryType.VideoRam);
+			_oamRam = DebugApi.GetMemoryState(this.CpuType == CpuType.Gameboy ? SnesMemoryType.GbSpriteRam : SnesMemoryType.SpriteRam);
 			_cgram = DebugApi.GetMemoryState(SnesMemoryType.CGRam);
 		}
 		
 		public void RefreshViewer()
 		{
-			ctrlSpriteList.SetData(_oamRam, _state.OamMode);
+			int height = this.CpuType == CpuType.Gameboy ? 256 : 240;
+			if(_previewImage == null || _previewImage.Height != height) {
+				_previewData = new byte[256 * height * 4];
+				_previewImage = new Bitmap(256, height, PixelFormat.Format32bppPArgb);
+				ctrlImagePanel.ImageSize = new Size(256, height);
+				ctrlImagePanel.Image = _previewImage;
+			}
 
-			DebugApi.GetSpritePreview(_options, _state, _vram, _oamRam, _cgram, _previewData);
+			ctrlSpriteList.SetData(_state, _oamRam, _state.Ppu.OamMode, this.CpuType == CpuType.Gameboy);
+
+			if(this.CpuType == CpuType.Gameboy) {
+				DebugApi.GetGameboySpritePreview(_options, _state.Gameboy.Ppu, _vram, _oamRam, _previewData);
+			} else {
+				DebugApi.GetSpritePreview(_options, _state.Ppu, _vram, _oamRam, _cgram, _previewData);
+			}
 
 			using(Graphics g = Graphics.FromImage(_previewImage)) {
 				GCHandle handle = GCHandle.Alloc(_previewData, GCHandleType.Pinned);
-				Bitmap source = new Bitmap(256, 240, 4 * 256, PixelFormat.Format32bppPArgb, handle.AddrOfPinnedObject());
+				Bitmap source = new Bitmap(256, height, 4 * 256, PixelFormat.Format32bppPArgb, handle.AddrOfPinnedObject());
 				g.DrawImage(source, 0, 0);
 				handle.Free();
 			}
 
 			if(_options.SelectedSprite >= 0) {
-				ctrlImagePanel.Selection = SpriteInfo.GetSpriteInfo(_oamRam, _state.OamMode, _options.SelectedSprite).GetBounds();
+				ctrlImagePanel.Selection = GetSpriteInfo(_options.SelectedSprite).GetBounds();
 			} else {
 				ctrlImagePanel.Selection = Rectangle.Empty;
 			}
@@ -157,8 +169,8 @@ namespace Mesen.GUI.Debugger
 			int y = e.Y / ctrlImagePanel.ImageScale;
 
 			SpriteInfo match = null;
-			for(int i = 0; i < 128; i++) {
-				SpriteInfo sprite = SpriteInfo.GetSpriteInfo(_oamRam, _state.OamMode, i);
+			for(int i = 0; i < (this.CpuType == CpuType.Gameboy ? 40 : 128); i++) {
+				SpriteInfo sprite = GetSpriteInfo(i);
 				if(x >= sprite.X && x <= sprite.X + sprite.Width) {
 					int endY = (sprite.Y + sprite.Height) & 0xFF;
 					bool visible = (y >= sprite.Y && y < endY) || (endY < sprite.Y && y < endY);
@@ -170,6 +182,18 @@ namespace Mesen.GUI.Debugger
 			}
 
 			SelectSprite(match);
+		}
+
+		private SpriteInfo GetSpriteInfo(int index)
+		{
+			SpriteInfo sprite;
+			if(this.CpuType == CpuType.Gameboy) {
+				sprite = SpriteInfo.GetGbSpriteInfo(_oamRam, index, _state.Gameboy.Ppu.LargeSprites, _state.Gameboy.Ppu.CgbEnabled);
+			} else {
+				sprite = SpriteInfo.GetSpriteInfo(_oamRam, _state.Ppu.OamMode, index);
+			}
+
+			return sprite;
 		}
 
 		private void SelectSprite(SpriteInfo sprite)

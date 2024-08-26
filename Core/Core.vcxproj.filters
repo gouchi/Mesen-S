@@ -488,9 +488,6 @@
     <ClInclude Include="Profiler.h">
       <Filter>Debugger</Filter>
     </ClInclude>
-    <ClInclude Include="Assembler.h">
-      <Filter>Debugger</Filter>
-    </ClInclude>
     <ClInclude Include="Spc7110.h">
       <Filter>SNES\Coprocessors\SPC7110</Filter>
     </ClInclude>
@@ -586,6 +583,24 @@
     </ClInclude>
     <ClInclude Include="BaseEventManager.h">
       <Filter>Debugger\EventManager</Filter>
+    </ClInclude>
+    <ClInclude Include="GbDmaController.h">
+      <Filter>GB</Filter>
+    </ClInclude>
+    <ClInclude Include="Assembler.h">
+      <Filter>Debugger\Assembler</Filter>
+    </ClInclude>
+    <ClInclude Include="GbAssembler.h">
+      <Filter>Debugger\Assembler</Filter>
+    </ClInclude>
+    <ClInclude Include="IAssembler.h">
+      <Filter>Debugger\Assembler</Filter>
+    </ClInclude>
+    <ClInclude Include="SuperGameboy.h">
+      <Filter>SNES\Coprocessors\SuperGameboy</Filter>
+    </ClInclude>
+    <ClInclude Include="GbBootRom.h">
+      <Filter>GB</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -872,9 +887,6 @@
     <ClCompile Include="Profiler.cpp">
       <Filter>Debugger</Filter>
     </ClCompile>
-    <ClCompile Include="Assembler.cpp">
-      <Filter>Debugger</Filter>
-    </ClCompile>
     <ClCompile Include="Spc7110.cpp">
       <Filter>SNES\Coprocessors\SPC7110</Filter>
     </ClCompile>
@@ -931,6 +943,27 @@
     </ClCompile>
     <ClCompile Include="GbEventManager.cpp">
       <Filter>Debugger\EventManager</Filter>
+    </ClCompile>
+    <ClCompile Include="GbDmaController.cpp">
+      <Filter>GB</Filter>
+    </ClCompile>
+    <ClCompile Include="Assembler.cpp">
+      <Filter>Debugger\Assembler</Filter>
+    </ClCompile>
+    <ClCompile Include="GbAssembler.cpp">
+      <Filter>Debugger\Assembler</Filter>
+    </ClCompile>
+    <ClCompile Include="GbSquareChannel.cpp">
+      <Filter>GB\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GbNoiseChannel.cpp">
+      <Filter>GB\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GbWaveChannel.cpp">
+      <Filter>GB\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="SuperGameboy.cpp">
+      <Filter>SNES\Coprocessors\SuperGameboy</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1020,6 +1053,12 @@
     </Filter>
     <Filter Include="Debugger\EventManager">
       <UniqueIdentifier>{b1753ff0-0c73-4acf-978b-1964222e01c6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debugger\Assembler">
+      <UniqueIdentifier>{8abb14c6-e2ee-48cb-ad91-38402cb8510c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SNES\Coprocessors\SuperGameboy">
+      <UniqueIdentifier>{50d3ab3e-f393-4fa3-a8a6-8ec593089f1b}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

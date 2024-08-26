@@ -4,13 +4,14 @@
 #include "Ppu.h"
 #include "Spc.h"
 #include "NecDsp.h"
-#include "Gameboy.h"
 #include "InternalRegisters.h"
 #include "ControlManager.h"
 #include "MemoryManager.h"
 #include "DmaController.h"
 #include "BaseCartridge.h"
 #include "RamHandler.h"
+#include "Gameboy.h"
+#include "GbPpu.h"
 #include "Debugger.h"
 #include "DebugTypes.h"
 #include "NotificationManager.h"
@@ -294,6 +295,9 @@ void Console::Stop(bool sendNotification)
 		_notificationManager->SendNotification(ConsoleNotificationType::BeforeEmulationStop);
 	}
 
+	_consoleType = ConsoleType::Snes;
+	_settings->ClearFlag(EmulationFlags::GameboyMode);
+
 	//Make sure we release both pointers to destroy the debugger before everything else
 	_debugger.reset();
 	debugger.reset();
@@ -387,6 +391,7 @@ bool Console::LoadRom(VirtualFile romFile, VirtualFile patchFile, bool stopRom, 
 	EmulationConfig orgConfig = _settings->GetEmulationConfig(); //backup emulation config (can be temporarily overriden to control the power on RAM state)
 	shared_ptr<BaseCartridge> cart = forPowerCycle ? _cart : BaseCartridge::CreateCartridge(this, romFile, patchFile);
 	if(cart) {
+		bool debuggerActive = _debugger != nullptr;
 		if(stopRom) {
 			KeyManager::UpdateDevices();
 			Stop(false);
@@ -397,8 +402,6 @@ bool Console::LoadRom(VirtualFile romFile, VirtualFile patchFile, bool stopRom, 
 		_cart = cart;
 		
 		auto lock = _debuggerLock.AcquireSafe();
-		bool debuggerActive = _debugger != nullptr;
-
 		if(_debugger) {
 			//Reset debugger if it was running before
 			_debugger->Release();
@@ -429,10 +432,12 @@ bool Console::LoadRom(VirtualFile romFile, VirtualFile patchFile, bool stopRom, 
 		_memoryManager->Initialize(this);
 		_internalRegisters->Initialize(this);
 
-		if(_cart->GetGameboy()) {
+		if(_cart->GetCoprocessor() == nullptr && _cart->GetGameboy()) {
 			_cart->GetGameboy()->PowerOn();
+			_consoleType = _cart->GetGameboy()->IsCgb() ? ConsoleType::GameboyColor : ConsoleType::Gameboy;
 			_settings->SetFlag(EmulationFlags::GameboyMode);
 		} else {
+			_consoleType = ConsoleType::Snes;
 			_settings->ClearFlag(EmulationFlags::GameboyMode);
 		}
 
@@ -503,6 +508,11 @@ ConsoleRegion Console::GetRegion()
 	return _region;
 }
 
+ConsoleType Console::GetConsoleType()
+{
+	return _consoleType;
+}
+
 void Console::UpdateRegion()
 {
 	switch(_settings->GetEmulationConfig().Region) {
@@ -556,7 +566,7 @@ void Console::PauseOnNextFrame()
 	shared_ptr<Debugger> debugger = _debugger;
 	if(debugger) {
 		if(_settings->CheckFlag(EmulationFlags::GameboyMode)) {
-			debugger->Step(CpuType::Cpu, 144, StepType::SpecificScanline);
+			debugger->Step(CpuType::Gameboy, 144, StepType::SpecificScanline);
 		} else {
 			debugger->Step(CpuType::Cpu, 240, StepType::SpecificScanline);
 		}
@@ -876,61 +886,11 @@ uint32_t Console::GetFrameCount()
 {
 	shared_ptr<BaseCartridge> cart = _cart;
 	if(_settings->CheckFlag(EmulationFlags::GameboyMode) && cart->GetGameboy()) {
-		return cart->GetGameboy()->GetState().Ppu.FrameCount;
+		GbPpu* ppu = cart->GetGameboy()->GetPpu();
+		return ppu ? ppu->GetFrameCount() : 0;
 	} else {
 		shared_ptr<Ppu> ppu = _ppu;
 		return ppu ? ppu->GetFrameCount() : 0;
-	}
-}
-
-template<CpuType type>
-void Console::ProcessMemoryRead(uint32_t addr, uint8_t value, MemoryOperationType opType)
-{
-	if(_debugger) {
-		_debugger->ProcessMemoryRead<type>(addr, value, opType);
-	}
-}
-
-template<CpuType type>
-void Console::ProcessMemoryWrite(uint32_t addr, uint8_t value, MemoryOperationType opType)
-{
-	if(_debugger) {
-		_debugger->ProcessMemoryWrite<type>(addr, value, opType);
-	}
-}
-
-void Console::ProcessPpuRead(uint32_t addr, uint8_t value, SnesMemoryType memoryType)
-{
-	if(_debugger) {
-		_debugger->ProcessPpuRead(addr, value, memoryType);
-	}
-}
-
-void Console::ProcessPpuWrite(uint32_t addr, uint8_t value, SnesMemoryType memoryType)
-{
-	if(_debugger) {
-		_debugger->ProcessPpuWrite(addr, value, memoryType);
-	}
-}
-
-void Console::ProcessWorkRamRead(uint32_t addr, uint8_t value)
-{
-	if(_debugger) {
-		_debugger->ProcessWorkRamRead(addr, value);
-	}
-}
-
-void Console::ProcessWorkRamWrite(uint32_t addr, uint8_t value)
-{
-	if(_debugger) {
-		_debugger->ProcessWorkRamWrite(addr, value);
-	}
-}
-
-void Console::ProcessPpuCycle(uint16_t scanline, uint16_t cycle)
-{
-	if(_debugger) {
-		_debugger->ProcessPpuCycle(scanline, cycle);
 	}
 }
 
@@ -950,6 +910,13 @@ void Console::ProcessEvent(EventType type)
 
 	if(_debugger) {
 		_debugger->ProcessEvent(type);
+	}
+}
+
+void Console::BreakImmediately(BreakSource source)
+{
+	if(_debugger) {
+		_debugger->BreakImmediately(source);
 	}
 }
 

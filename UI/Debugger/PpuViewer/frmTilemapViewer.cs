@@ -15,12 +15,12 @@ using System.Windows.Forms;
 
 namespace Mesen.GUI.Debugger
 {
-	public partial class frmTilemapViewer : BaseForm, IRefresh
+	public partial class frmTilemapViewer : BaseForm, IRefresh, IDebuggerWindow
 	{
 		private int[,] _layerBpp = new int[8, 4] { { 2,2,2,2 }, { 4,4,2,0 }, { 4,4,0,0 }, { 8,4,0,0 }, { 8,2,0,0 }, { 4,2,0,0 }, { 4,0,0,0 }, { 8,0,0,0 } };
 
 		private GetTilemapOptions _options;
-		private PpuState _state;
+		private DebugState _state;
 		private byte[] _cgram;
 		private byte[] _vram;
 		private byte[] _tilemapData;
@@ -29,11 +29,16 @@ namespace Mesen.GUI.Debugger
 		private int _selectedColumn = 0;
 		private DateTime _lastUpdate = DateTime.MinValue;
 		private WindowRefreshManager _refreshManager;
-		private bool _isGameboyMode = false;
+		
+		public CpuType CpuType { get; private set; }
 
-		public frmTilemapViewer()
+		public frmTilemapViewer(CpuType cpuType)
 		{
+			this.CpuType = cpuType;
 			InitializeComponent();
+			if(cpuType == CpuType.Gameboy) {
+				this.Text = "GB " + this.Text;
+			}
 		}
 
 		protected override void OnLoad(EventArgs e)
@@ -56,7 +61,7 @@ namespace Mesen.GUI.Debugger
 			chkShowTileGrid.Checked = config.ShowTileGrid;
 			chkShowScrollOverlay.Checked = config.ShowScrollOverlay;
 			ctrlImagePanel.ImageScale = config.ImageScale;
-			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle);
+			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle, this.CpuType);
 
 			_refreshManager = new WindowRefreshManager(this);
 			_refreshManager.AutoRefresh = config.AutoRefresh;
@@ -104,30 +109,29 @@ namespace Mesen.GUI.Debugger
 
 		public void RefreshData()
 		{
-			_isGameboyMode = EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy;
-			_state = DebugApi.GetState().Ppu;
-			_vram = DebugApi.GetMemoryState(_isGameboyMode ? SnesMemoryType.GbVideoRam : SnesMemoryType.VideoRam);
+			_state = DebugApi.GetState();
+			_vram = DebugApi.GetMemoryState(this.CpuType == CpuType.Gameboy ? SnesMemoryType.GbVideoRam : SnesMemoryType.VideoRam);
 			_cgram = DebugApi.GetMemoryState(SnesMemoryType.CGRam);
 		}
 
 		private bool IsDoubleWidthScreen
 		{
-			get { return _state.HiResMode || _state.BgMode == 5 || _state.BgMode == 6; }
+			get { return _state.Ppu.HiResMode || _state.Ppu.BgMode == 5 || _state.Ppu.BgMode == 6; }
 		}
 
 		private bool IsDoubleHeightScreen
 		{
-			get { return _state.ScreenInterlace || _state.BgMode == 5 || _state.BgMode == 6; }
+			get { return _state.Ppu.ScreenInterlace || _state.Ppu.BgMode == 5 || _state.Ppu.BgMode == 6; }
 		}
 
 		private bool IsLargeTileWidth
 		{
-			get { return _state.Layers[_options.Layer].LargeTiles || _state.BgMode == 5 || _state.BgMode == 6; }
+			get { return _state.Ppu.Layers[_options.Layer].LargeTiles || _state.Ppu.BgMode == 5 || _state.Ppu.BgMode == 6; }
 		}
 
 		private bool IsLargeTileHeight
 		{
-			get { return _state.Layers[_options.Layer].LargeTiles; }
+			get { return _state.Ppu.Layers[_options.Layer].LargeTiles; }
 		}
 
 		public ctrlScanlineCycleSelect ScanlineCycleSelect
@@ -137,14 +141,14 @@ namespace Mesen.GUI.Debugger
 
 		private int GetWidth()
 		{
-			if(_isGameboyMode) {
+			if(this.CpuType == CpuType.Gameboy) {
 				return 256;
-			} else if(_state.BgMode == 7) {
+			} else if(_state.Ppu.BgMode == 7) {
 				return 1024;
 			}
 
-			LayerConfig layer = _state.Layers[_options.Layer];
-			bool largeTileWidth = layer.LargeTiles || _state.BgMode == 5 || _state.BgMode == 6;
+			LayerConfig layer = _state.Ppu.Layers[_options.Layer];
+			bool largeTileWidth = layer.LargeTiles || _state.Ppu.BgMode == 5 || _state.Ppu.BgMode == 6;
 
 			int width = 256;
 			if(layer.DoubleWidth) {
@@ -158,13 +162,13 @@ namespace Mesen.GUI.Debugger
 
 		private int GetHeight()
 		{
-			if(_isGameboyMode) {
+			if(this.CpuType == CpuType.Gameboy) {
 				return 256;
-			} else if(_state.BgMode == 7) {
+			} else if(_state.Ppu.BgMode == 7) {
 				return 1024;
 			}
 
-			LayerConfig layer = _state.Layers[_options.Layer];
+			LayerConfig layer = _state.Ppu.Layers[_options.Layer];
 
 			int height = 256;
 			if(layer.DoubleHeight) {
@@ -178,14 +182,15 @@ namespace Mesen.GUI.Debugger
 
 		public void RefreshViewer()
 		{
-			if(_layerBpp[_state.BgMode, _options.Layer] == 0) {
+			bool isGameboy = this.CpuType == CpuType.Gameboy;
+			if(_layerBpp[_state.Ppu.BgMode, _options.Layer] == 0) {
 				_options.Layer = 0;
 			}
 
-			if(_isGameboyMode) {
-				DebugApi.GetGameboyTilemap(_vram, (ushort)(_options.Layer == 0 ? 0x1800 : 0x1C00), _tilemapData);
+			if(isGameboy) {
+				DebugApi.GetGameboyTilemap(_vram, _state.Gameboy.Ppu, (ushort)(_options.Layer == 0 ? 0x1800 : 0x1C00), _tilemapData);
 			} else {
-				DebugApi.GetTilemap(_options, _state, _vram, _cgram, _tilemapData);
+				DebugApi.GetTilemap(_options, _state.Ppu, _vram, _cgram, _tilemapData);
 			}
 
 			int mapWidth = GetWidth();
@@ -206,17 +211,23 @@ namespace Mesen.GUI.Debugger
 			btnLayer3.BackColor = _options.Layer == 2 ? SystemColors.GradientActiveCaption : Color.Empty;
 			btnLayer4.BackColor = _options.Layer == 3 ? SystemColors.GradientActiveCaption : Color.Empty;
 
-			btnLayer1.Enabled = _layerBpp[_state.BgMode, 0] > 0;
-			btnLayer2.Enabled = _layerBpp[_state.BgMode, 1] > 0;
-			btnLayer3.Enabled = _layerBpp[_state.BgMode, 2] > 0;
-			btnLayer4.Enabled = _layerBpp[_state.BgMode, 3] > 0;
+			btnLayer1.Enabled = _layerBpp[_state.Ppu.BgMode, 0] > 0;
+			btnLayer2.Enabled = _layerBpp[_state.Ppu.BgMode, 1] > 0;
+			btnLayer3.Enabled = _layerBpp[_state.Ppu.BgMode, 2] > 0;
+			btnLayer4.Enabled = _layerBpp[_state.Ppu.BgMode, 3] > 0;
 
-			grpLayerInfo.Visible = !_isGameboyMode;
-			grpTileInfo.Visible = !_isGameboyMode;
-			btnLayer3.Visible = !_isGameboyMode;
-			btnLayer4.Visible = !_isGameboyMode;
+			btnLayer1.Text = isGameboy ? "$9800" : "1";
+			btnLayer2.Text = isGameboy ? "$9C00" : "2";
+			btnLayer1.Width = isGameboy ? 65 : 32;
+			btnLayer2.Width = isGameboy ? 65 : 32;
 
-			chkShowScrollOverlay.Visible = !_isGameboyMode;
+			btnLayer3.Visible = !isGameboy;
+			btnLayer4.Visible = !isGameboy;
+
+			lblMap.Visible = !isGameboy;
+			txtMapNumber.Visible = !isGameboy;
+			lblValue.Visible = !isGameboy;
+			txtValue.Visible = !isGameboy;
 
 			ctrlImagePanel.ImageSize = new Size(GetWidth(), GetHeight());
 			ctrlImagePanel.Selection = new Rectangle(_selectedColumn * 8, _selectedRow * 8, IsLargeTileWidth ? 16 : 8, IsLargeTileHeight ? 16 : 8);
@@ -224,25 +235,32 @@ namespace Mesen.GUI.Debugger
 			ctrlImagePanel.GridSizeX = chkShowTileGrid.Checked ? (IsLargeTileWidth ? 16 : 8): 0;
 			ctrlImagePanel.GridSizeY = chkShowTileGrid.Checked ? (IsLargeTileHeight ? 16 : 8): 0;
 
-			if(!_isGameboyMode && chkShowScrollOverlay.Checked) {
-				LayerConfig layer = _state.Layers[_options.Layer];
-				int hScroll = _state.BgMode == 7 ? (int)_state.Mode7.HScroll : layer.HScroll;
-				int vScroll = _state.BgMode == 7 ? (int)_state.Mode7.VScroll : layer.VScroll;
-				int height = _state.OverscanMode ? 239 : 224;
-				ctrlImagePanel.Overlay = new Rectangle(hScroll, vScroll, IsDoubleWidthScreen ? 512 : 256, IsDoubleHeightScreen ? height*2 : height);
+			if(chkShowScrollOverlay.Checked) {
+				if(isGameboy) {
+					GbPpuState ppu = _state.Gameboy.Ppu;
+					ctrlImagePanel.Overlay = new Rectangle(ppu.ScrollX, ppu.ScrollY, 160, 144);
+				} else {
+					LayerConfig layer = _state.Ppu.Layers[_options.Layer];
+					int hScroll = _state.Ppu.BgMode == 7 ? (int)_state.Ppu.Mode7.HScroll : layer.HScroll;
+					int vScroll = _state.Ppu.BgMode == 7 ? (int)_state.Ppu.Mode7.VScroll : layer.VScroll;
+					int height = _state.Ppu.OverscanMode ? 239 : 224;
+					ctrlImagePanel.Overlay = new Rectangle(hScroll, vScroll, IsDoubleWidthScreen ? 512 : 256, IsDoubleHeightScreen ? height * 2 : height);
+				}
 			} else {
 				ctrlImagePanel.Overlay = Rectangle.Empty;
 			}
 			ctrlImagePanel.Refresh();
 
-			if(!_isGameboyMode) {
+			if(isGameboy) {
+				UpdateGameboyFields();
+			} else {
 				UpdateFields();
 			}
 		}
 
 		private void UpdateFields()
 		{
-			if(_state.BgMode == 7) {
+			if(_state.Ppu.BgMode == 7) {
 				//Selected tile
 				txtMapNumber.Text = "0";
 				txtPosition.Text = _selectedColumn.ToString() + ", " + _selectedRow.ToString();
@@ -268,19 +286,19 @@ namespace Mesen.GUI.Debugger
 				int row = (IsLargeTileHeight ? _selectedRow / 2 : _selectedRow);
 				int column = (IsLargeTileWidth ? _selectedColumn / 2 : _selectedColumn);
 
-				LayerConfig layer = _state.Layers[_options.Layer];
+				LayerConfig layer = _state.Ppu.Layers[_options.Layer];
 				int addrVerticalScrollingOffset = layer.DoubleHeight ? ((row & 0x20) << (layer.DoubleWidth ? 6 : 5)) : 0;
 				int baseOffset = layer.TilemapAddress + addrVerticalScrollingOffset + ((row & 0x1F) << 5);
-				int address = (baseOffset + (column & 0x1F) + (layer.DoubleWidth ? ((column & 0x20) << 5) : 0)) << 1;
+				int address = ((baseOffset + (column & 0x1F) + (layer.DoubleWidth ? ((column & 0x20) << 5) : 0)) << 1) & 0xFFFF;
 				int value = _vram[address] | (_vram[address + 1] << 8);
 
 				//Selected tile
-				txtMapNumber.Text = ((column >= 32 ? 1 : 0) + (row >= 32 ? 1 : 0)).ToString();
+				txtMapNumber.Text = ((column >= 32 ? 1 : 0) + (row >= 32 ? 2 : 0)).ToString();
 				txtPosition.Text = (column & 0x1F).ToString() + ", " + (row & 0x1F).ToString();
 				txtAddress.Text = address.ToString("X4");
 				txtValue.Text = value.ToString("X4");
 
-				int bpp = _layerBpp[_state.BgMode, _options.Layer];
+				int bpp = _layerBpp[_state.Ppu.BgMode, _options.Layer];
 				int tileNumber = (value & 0x3FF);
 				txtTileNumber.Text = tileNumber.ToString();
 				txtTileAddress.Text = ((layer.ChrAddress << 1) + (tileNumber * bpp * 8)).ToString("X4");
@@ -297,6 +315,44 @@ namespace Mesen.GUI.Debugger
 				txtTileSize.Text = (IsLargeTileWidth ? "16" : "8") + "x" + (IsLargeTileHeight ? "16" : "8");
 				txtBitDepth.Text = bpp.ToString();
 			}
+		}
+
+		private void UpdateGameboyFields()
+		{
+			GbPpuState state = _state.Gameboy.Ppu;
+			bool isGbc = state.CgbEnabled;
+			int tilemapAddress = _options.Layer == 1 ? 0x1C00 : 0x1800;
+			int tilesetAddress = state.BgTileSelect ? 0x0000 : 0x1000;
+
+			int row = _selectedRow;
+			int column = _selectedColumn;
+
+			int address = tilemapAddress + (row * 32) + column;
+			byte tileNumber = _vram[address & 0x1FFF];
+			int attributes = isGbc ? _vram[0x2000 | (address & 0x1FFF)] : 0;
+
+			//Selected tile
+			txtPosition.Text = column.ToString() + ", " + row.ToString();
+			txtAddress.Text = address.ToString("X4");
+			txtTileNumber.Text = tileNumber.ToString() + " ($" + tileNumber.ToString("X2") + ")";
+
+			int tileAddress = tilesetAddress + (state.BgTileSelect ? tileNumber : (int)(sbyte)tileNumber) * 16;
+			if((attributes & 0x08) != 0) {
+				tileAddress |= 0x2000;
+			}
+			txtTileAddress.Text = tileAddress.ToString("X4");
+
+			txtPalette.Text = (attributes & 0x07).ToString();
+			chkPriorityFlag.Checked = (attributes & 0x80) != 0;
+			chkVerticalMirror.Checked = (attributes & 0x40) != 0;
+			chkHorizontalMirror.Checked = (attributes & 0x20) != 0;
+
+			//Tilemap
+			txtMapSize.Text = "32x32";
+			txtMapAddress.Text = (0x8000 | tilemapAddress).ToString("X4");
+			txtTilesetAddress.Text = (0x8000 | tilesetAddress).ToString("X4");
+			txtTileSize.Text = "8x8";
+			txtBitDepth.Text = "2";
 		}
 
 		private void btnLayer1_Click(object sender, EventArgs e)

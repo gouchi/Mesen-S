@@ -21,6 +21,7 @@ namespace Mesen.GUI
 		[DllImport(DllPath)] public static extern void SetAudioConfig(AudioConfig config);
 		[DllImport(DllPath)] public static extern void SetInputConfig(InputConfig config);
 		[DllImport(DllPath)] public static extern void SetEmulationConfig(EmulationConfig config);
+		[DllImport(DllPath)] public static extern void SetGameboyConfig(GameboyConfig config);
 
 		[DllImport(DllPath)] public static extern void SetPreferences(InteropPreferencesConfig config);
 		[DllImport(DllPath)] public static extern void SetShortcutKeys([MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)]ShortcutKeyInfo[] shortcuts, UInt32 count);
@@ -63,6 +64,13 @@ namespace Mesen.GUI
 		UseLowerCaseDisassembly = 0x2000,
 		
 		AutoResetCdl = 0x4000,
+
+		GbBreakOnInvalidOamAccess = 0x10000,
+		GbBreakOnInvalidVramAccess = 0x20000,
+		GbBreakOnDisableLcdOutsideVblank = 0x40000,
+		GbBreakOnInvalidOpCode = 0x80000,
+		GbBreakOnNopLoad = 0x100000,
+		GbBreakOnOamCorruption = 0x200000,
 
 		GbDebuggerEnabled = 0x02000000,
 		Cx4DebuggerEnabled = 0x04000000,

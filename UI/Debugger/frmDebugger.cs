@@ -14,7 +14,7 @@ using System.Windows.Forms;
 
 namespace Mesen.GUI.Debugger
 {
-	public partial class frmDebugger : BaseForm
+	public partial class frmDebugger : BaseForm, IDebuggerWindow
 	{
 		private EntityBinder _entityBinder = new EntityBinder();
 		private NotificationListener _notifListener;
@@ -137,7 +137,7 @@ namespace Mesen.GUI.Debugger
 				case CpuType.Gameboy:
 					ctrlDisassemblyView.Initialize(new GbDisassemblyManager(), new GbLineStyleProvider());
 					ConfigApi.SetDebuggerFlag(DebuggerFlags.GbDebuggerEnabled, true);
-					this.Text = "Game Boy Debugger";
+					this.Text = "GB Debugger";
 
 					ctrlMemoryMapping = new ctrlMemoryMapping();
 					ctrlMemoryMapping.Size = new Size(this.ClientSize.Width, 33);
@@ -152,9 +152,15 @@ namespace Mesen.GUI.Debugger
 					mnuBreakOnWdm.Visible = false;
 					mnuBreakOnCop.Visible = false;
 					mnuBreakOnStp.Visible = false;
-					sepBreakOnUnitRead.Visible = false;
-					mnuBreakOnUnitRead.Visible = false;
 					ctrlPpuStatus.Visible = false;
+
+					sepGameboyBreak.Visible = true;
+					mnuGbBreakOnDisableLcdOutsideVblank.Visible = true;
+					mnuGbBreakOnInvalidOamAccess.Visible = true;
+					mnuGbBreakOnInvalidOpCode.Visible = true;
+					mnuGbBreakOnInvalidVramAccess.Visible = true;
+					mnuGbBreakOnNopLoad.Visible = true;
+					mnuGbBreakOnOamCorruption.Visible = false;
 
 					this.ctrlGameboyStatus = new ctrlGameboyStatus();
 					this.ctrlGameboyStatus.Padding = new Padding(3, 0, 3, 0);
@@ -298,8 +304,21 @@ namespace Mesen.GUI.Debugger
 			mnuStepOver.Click += (s, e) => { DebugApi.Step(_cpuType, 1, StepType.StepOver); };
 			mnuStepOut.Click += (s, e) => { DebugApi.Step(_cpuType, 1, StepType.StepOut); };
 			mnuRunPpuCycle.Click += (s, e) => { DebugApi.Step(_cpuType, 1, StepType.PpuStep); };
-			mnuRunScanline.Click += (s, e) => { DebugApi.Step(_cpuType, 341, StepType.PpuStep); };
-			mnuRunOneFrame.Click += (s, e) => { DebugApi.Step(_cpuType, 341 * 262, StepType.PpuStep); }; //TODO ntsc/pal
+			mnuRunScanline.Click += (s, e) => {
+				if(_cpuType == CpuType.Gameboy) {
+					DebugApi.Step(_cpuType, 456, StepType.PpuStep);
+				} else {
+					DebugApi.Step(_cpuType, 341, StepType.PpuStep);
+				}
+			};
+			mnuRunOneFrame.Click += (s, e) => {
+				if(_cpuType == CpuType.Gameboy) {
+					DebugApi.Step(_cpuType, 456*154, StepType.PpuStep);
+				} else {
+					//TODO ntsc/pal
+					DebugApi.Step(_cpuType, 341 * 262, StepType.PpuStep);
+				}
+			};
 			mnuContinue.Click += (s, e) => { DebugApi.ResumeExecution(); };
 			mnuBreak.Click += (s, e) => { DebugApi.Step(_cpuType, 1, StepType.Step); };
 
@@ -334,8 +353,17 @@ namespace Mesen.GUI.Debugger
 			mnuBreakOnStp.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BreakOnStp); };
 			mnuBreakOnWdm.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BreakOnWdm); };
 			mnuBreakOnOpen.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BreakOnOpen); };
+
 			mnuBreakOnPowerCycleReset.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BreakOnPowerCycleReset); };
 			mnuBreakOnUnitRead.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BreakOnUninitRead); };
+
+			mnuGbBreakOnDisableLcdOutsideVblank.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnDisableLcdOutsideVblank); };
+			mnuGbBreakOnInvalidOamAccess.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnInvalidOamAccess); };
+			mnuGbBreakOnInvalidOpCode.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnInvalidOpCode); };
+			mnuGbBreakOnInvalidVramAccess.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnInvalidVramAccess); };
+			mnuGbBreakOnNopLoad.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnNopLoad); };
+			mnuGbBreakOnOamCorruption.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.GbBreakOnOamCorruption); };
+
 			mnuBringToFrontOnBreak.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BringToFrontOnBreak); };
 			mnuBringToFrontOnPause.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.BringToFrontOnPause); };
 			mnuAutoResetCdl.Click += (s, e) => { InvertFlag(ref ConfigManager.Config.Debug.Debugger.AutoResetCdl); };
@@ -378,6 +406,12 @@ namespace Mesen.GUI.Debugger
 			mnuBreakOnOpen.Checked = cfg.BreakOnOpen;
 			mnuBreakOnPowerCycleReset.Checked = cfg.BreakOnPowerCycleReset;
 			mnuBreakOnUnitRead.Checked = cfg.BreakOnUninitRead;
+			mnuGbBreakOnDisableLcdOutsideVblank.Checked = cfg.GbBreakOnDisableLcdOutsideVblank;
+			mnuGbBreakOnInvalidOamAccess.Checked = cfg.GbBreakOnInvalidOamAccess;
+			mnuGbBreakOnInvalidOpCode.Checked = cfg.GbBreakOnInvalidOpCode;
+			mnuGbBreakOnInvalidVramAccess.Checked = cfg.GbBreakOnInvalidVramAccess;
+			mnuGbBreakOnNopLoad.Checked = cfg.GbBreakOnNopLoad;
+			mnuGbBreakOnOamCorruption.Checked = cfg.GbBreakOnOamCorruption;
 			mnuBringToFrontOnBreak.Checked = cfg.BringToFrontOnBreak;
 			mnuBringToFrontOnPause.Checked = cfg.BringToFrontOnPause;
 		}
@@ -543,18 +577,8 @@ namespace Mesen.GUI.Debugger
 		{
 			switch(e.NotificationType) {
 				case ConsoleNotificationType.GameLoaded: {
-					if(_cpuType == CpuType.Sa1) {
-						CoprocessorType coprocessor = EmuApi.GetRomInfo().CoprocessorType;
-						if(coprocessor != CoprocessorType.SA1) {
-							this.Invoke((MethodInvoker)(() => {
-								this.Close();
-							}));
-							return;
-						}
-					}
-
 					if(ConfigManager.Config.Debug.Debugger.BreakOnPowerCycleReset) {
-						DebugApi.Step(_cpuType, 1, StepType.PpuStep);
+						DebugApi.Step(_cpuType, 1, StepType.Step);
 					}
 
 					BreakpointManager.SetBreakpoints();
@@ -703,8 +727,9 @@ namespace Mesen.GUI.Debugger
 
 		private void mnuResetCdlLog_Click(object sender, EventArgs e)
 		{
-			byte[] emptyCdlLog = new byte[DebugApi.GetMemorySize(SnesMemoryType.PrgRom)];
-			DebugApi.SetCdlData(emptyCdlLog, emptyCdlLog.Length);
+			int memSize = DebugApi.GetMemorySize(_cpuType == CpuType.Gameboy ? SnesMemoryType.GbPrgRom : SnesMemoryType.PrgRom);
+			byte[] emptyCdlLog = new byte[memSize];
+			DebugApi.SetCdlData(_cpuType, emptyCdlLog, emptyCdlLog.Length);
 			RefreshDisassembly();
 		}
 
@@ -728,6 +753,9 @@ namespace Mesen.GUI.Debugger
 				if(saveAsIps) {
 					sfd.SetFilter("IPS files (*.ips)|*.ips");
 					sfd.FileName = EmuApi.GetRomInfo().GetRomName() + ".ips";
+				} else if(_cpuType == CpuType.Gameboy) {
+					sfd.SetFilter("GB files (*.gb,*.gbc)|*.gb;*.gbc");
+					sfd.FileName = EmuApi.GetRomInfo().GetRomName() + "_Modified.gb";
 				} else {
 					sfd.SetFilter("SFC files (*.sfc)|*.sfc");
 					sfd.FileName = EmuApi.GetRomInfo().GetRomName() + "_Modified.sfc";

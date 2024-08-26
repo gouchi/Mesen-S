@@ -27,6 +27,9 @@ namespace Mesen.GUI
 		[DllImport(DllPath)] public static extern void SetTraceOptions(InteropTraceLoggerOptions options);
 		[DllImport(DllPath)] public static extern void ClearTraceLog();
 
+		[DllImport(DllPath, EntryPoint = "GetDebuggerLog")] private static extern IntPtr GetDebuggerLogWrapper();
+		public static string GetLog() { return Utf8Marshaler.PtrToStringUtf8(DebugApi.GetDebuggerLogWrapper()).Replace("\n", Environment.NewLine); }
+
 		[DllImport(DllPath, EntryPoint = "GetDisassemblyLineData")] private static extern void GetDisassemblyLineDataWrapper(CpuType type, UInt32 lineIndex, ref InteropCodeLineData lineData);
 		public static CodeLineData GetDisassemblyLineData(CpuType type, UInt32 lineIndex)
 		{
@@ -88,20 +91,22 @@ namespace Mesen.GUI
 		}
 
 		[DllImport(DllPath)] public static extern void GetTilemap(GetTilemapOptions options, PpuState state, byte[] vram, byte[] cgram, [In, Out] byte[] buffer);
-		[DllImport(DllPath)] public static extern void GetGameboyTilemap(byte[] vram, UInt16 offset, [In, Out] byte[] buffer);
 		[DllImport(DllPath)] public static extern void GetTileView(GetTileViewOptions options, byte[] source, int srcSize, byte[] cgram, [In, Out] byte[] buffer);
 		[DllImport(DllPath)] public static extern void GetSpritePreview(GetSpritePreviewOptions options, PpuState state, byte[] vram, byte[] oamRam, byte[] cgram, [In, Out] byte[] buffer);
 
-		[DllImport(DllPath)] public static extern void SetViewerUpdateTiming(Int32 viewerId, Int32 scanline, Int32 cycle);
+		[DllImport(DllPath)] public static extern void GetGameboyTilemap(byte[] vram, GbPpuState state, UInt16 offset, [In, Out] byte[] buffer);
+		[DllImport(DllPath)] public static extern void GetGameboySpritePreview(GetSpritePreviewOptions options, GbPpuState state, byte[] vram, byte[] oamRam, [In, Out] byte[] buffer);
 
-		[DllImport(DllPath)] private static extern UInt32 GetDebugEventCount(EventViewerDisplayOptions options);
-		[DllImport(DllPath, EntryPoint = "GetDebugEvents")] private static extern void GetDebugEventsWrapper([In, Out]DebugEventInfo[] eventArray, ref UInt32 maxEventCount);
-		public static DebugEventInfo[] GetDebugEvents(EventViewerDisplayOptions options)
+		[DllImport(DllPath)] public static extern void SetViewerUpdateTiming(Int32 viewerId, Int32 scanline, Int32 cycle, CpuType cpuType);
+
+		[DllImport(DllPath)] private static extern UInt32 GetDebugEventCount(CpuType cpuType, EventViewerDisplayOptions options);
+		[DllImport(DllPath, EntryPoint = "GetDebugEvents")] private static extern void GetDebugEventsWrapper(CpuType cpuType, [In, Out]DebugEventInfo[] eventArray, ref UInt32 maxEventCount);
+		public static DebugEventInfo[] GetDebugEvents(CpuType cpuType, EventViewerDisplayOptions options)
 		{
-			UInt32 maxEventCount = GetDebugEventCount(options);
+			UInt32 maxEventCount = GetDebugEventCount(cpuType, options);
 			DebugEventInfo[] debugEvents = new DebugEventInfo[maxEventCount];
 
-			DebugApi.GetDebugEventsWrapper(debugEvents, ref maxEventCount);
+			DebugApi.GetDebugEventsWrapper(cpuType, debugEvents, ref maxEventCount);
 			if(maxEventCount < debugEvents.Length) {
 				//Remove the excess from the array if needed
 				Array.Resize(ref debugEvents, (int)maxEventCount);
@@ -110,15 +115,15 @@ namespace Mesen.GUI
 			return debugEvents;
 		}
 
-		[DllImport(DllPath)] public static extern void GetEventViewerEvent(ref DebugEventInfo evtInfo, UInt16 scanline, UInt16 cycle, EventViewerDisplayOptions options);
-		[DllImport(DllPath)] public static extern UInt32 TakeEventSnapshot(EventViewerDisplayOptions options);		
+		[DllImport(DllPath)] public static extern void GetEventViewerEvent(CpuType cpuType, ref DebugEventInfo evtInfo, UInt16 scanline, UInt16 cycle, EventViewerDisplayOptions options);
+		[DllImport(DllPath)] public static extern UInt32 TakeEventSnapshot(CpuType cpuType, EventViewerDisplayOptions options);		
 
-		[DllImport(DllPath, EntryPoint = "GetEventViewerOutput")] private static extern void GetEventViewerOutputWrapper([In, Out]byte[] buffer, UInt32 bufferSize, EventViewerDisplayOptions options);
-		public static byte[] GetEventViewerOutput(int scanlineWidth, UInt32 scanlineCount, EventViewerDisplayOptions options)
+		[DllImport(DllPath, EntryPoint = "GetEventViewerOutput")] private static extern void GetEventViewerOutputWrapper(CpuType cpuType, [In, Out]byte[] buffer, UInt32 bufferSize, EventViewerDisplayOptions options);
+		public static byte[] GetEventViewerOutput(CpuType cpuType, int scanlineWidth, UInt32 scanlineCount, EventViewerDisplayOptions options)
 		{
 			UInt32 bufferSize = (UInt32)(scanlineWidth * scanlineCount * 2 * 4);
 			byte[] buffer = new byte[bufferSize];
-			DebugApi.GetEventViewerOutputWrapper(buffer, bufferSize, options);
+			DebugApi.GetEventViewerOutputWrapper(cpuType, buffer, bufferSize, options);
 			return buffer;
 		}
 
@@ -171,15 +176,15 @@ namespace Mesen.GUI
 			return cdlData;
 		}
 
-		[DllImport(DllPath)] public static extern void SetCdlData([In]byte[] cdlData, Int32 length);
-		[DllImport(DllPath)] public static extern void MarkBytesAs(UInt32 start, UInt32 end, CdlFlags type);
+		[DllImport(DllPath)] public static extern void SetCdlData(CpuType cpuType, [In]byte[] cdlData, Int32 length);
+		[DllImport(DllPath)] public static extern void MarkBytesAs(CpuType cpuType, UInt32 start, UInt32 end, CdlFlags type);
 
-		[DllImport(DllPath, EntryPoint = "AssembleCode")] private static extern UInt32 AssembleCodeWrapper([MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))]string code, UInt32 startAddress, [In, Out]Int16[] assembledCodeBuffer);
-		public static Int16[] AssembleCode(string code, UInt32 startAddress)
+		[DllImport(DllPath, EntryPoint = "AssembleCode")] private static extern UInt32 AssembleCodeWrapper(CpuType cpuType, [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))]string code, UInt32 startAddress, [In, Out]Int16[] assembledCodeBuffer);
+		public static Int16[] AssembleCode(CpuType cpuType, string code, UInt32 startAddress)
 		{
 			code = code.Replace(Environment.NewLine, "\n");
 			Int16[] assembledCode = new Int16[100000];
-			UInt32 size = DebugApi.AssembleCodeWrapper(code, startAddress, assembledCode);
+			UInt32 size = DebugApi.AssembleCodeWrapper(cpuType, code, startAddress, assembledCode);
 			Array.Resize(ref assembledCode, (int)size);
 			return assembledCode;
 		}
@@ -213,8 +218,10 @@ namespace Mesen.GUI
 		GbPrgRom,
 		GbWorkRam,
 		GbCartRam,
-		GbVideoRam,
 		GbHighRam,
+		GbBootRom,
+		GbVideoRam,
+		GbSpriteRam,
 		Register,
 	}
 
@@ -245,10 +252,29 @@ namespace Mesen.GUI
 				case SnesMemoryType.GbWorkRam:
 				case SnesMemoryType.GbCartRam:
 				case SnesMemoryType.GbHighRam:
+				case SnesMemoryType.GbBootRom:
+				case SnesMemoryType.GbVideoRam:
+				case SnesMemoryType.GbSpriteRam:
+				case SnesMemoryType.GameboyMemory:
 					return CpuType.Gameboy;
 
 				default:
 					return CpuType.Cpu;
+			}
+		}
+
+		public static bool IsPpuMemory(this SnesMemoryType memType)
+		{
+			switch(memType) {
+				case SnesMemoryType.VideoRam:
+				case SnesMemoryType.SpriteRam:
+				case SnesMemoryType.CGRam:
+				case SnesMemoryType.GbVideoRam:
+				case SnesMemoryType.GbSpriteRam:
+					return true;
+
+				default:
+					return false;
 			}
 		}
 
@@ -281,6 +307,7 @@ namespace Mesen.GUI
 				case SnesMemoryType.GbWorkRam:
 				case SnesMemoryType.GbCartRam:
 				case SnesMemoryType.GbHighRam:
+				case SnesMemoryType.GbBootRom:
 					return true;
 			}
 
@@ -445,10 +472,20 @@ namespace Mesen.GUI
 		public byte Layer;
 	}
 
+	public enum TileBackground
+	{
+		Default = 0,
+		PaletteColor = 1,
+		Black = 2,
+		White = 3,
+		Magenta = 4
+	}
+
 	public struct GetTileViewOptions
 	{
 		public TileFormat Format;
 		public TileLayout Layout;
+		public TileBackground Background;
 		public Int32 Width;
 		public Int32 Palette;
 		public Int32 PageSize;
@@ -590,7 +627,14 @@ namespace Mesen.GUI
 		BreakOnCop = 4,
 		BreakOnWdm = 5,
 		BreakOnStp = 6,
-		BreakOnUninitMemoryRead = 7
+		BreakOnUninitMemoryRead = 7,
+		
+		GbInvalidOamAccess = 8,
+		GbInvalidVramAccess = 9,
+		GbDisableLcdOutsideVblank = 10,
+		GbInvalidOpCode = 11,
+		GbNopLoad = 12,
+		GbOamCorruption = 13,
 	}
 
 	public struct BreakEvent

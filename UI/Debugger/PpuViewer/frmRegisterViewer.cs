@@ -53,7 +53,7 @@ namespace Mesen.GUI.Debugger
 			RestoreLocation(config.WindowLocation, config.WindowSize);
 
 			mnuAutoRefresh.Checked = config.AutoRefresh;
-			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle);
+			ctrlScanlineCycleSelect.Initialize(config.RefreshScanline, config.RefreshCycle, EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy ? CpuType.Gameboy : CpuType.Cpu);
 
 			_refreshManager = new WindowRefreshManager(this);
 			_refreshManager.AutoRefresh = config.AutoRefresh;
@@ -99,7 +99,7 @@ namespace Mesen.GUI.Debugger
 				tabMain.SelectedTab = tpgCpu;
 			}
 
-			if(_coprocessorType == CoprocessorType.SA1 || _coprocessorType == CoprocessorType.Gameboy) {
+			if(_coprocessorType == CoprocessorType.SA1 || _coprocessorType == CoprocessorType.Gameboy || _coprocessorType == CoprocessorType.SGB) {
 				tpgCoprocessor = new TabPage();
 				tpgCoprocessor.Text = _coprocessorType == CoprocessorType.SA1 ? "SA-1" : "Gameboy";
 				ctrlCoprocessor = new ctrlPropertyList();
@@ -111,6 +111,9 @@ namespace Mesen.GUI.Debugger
 					tabMain.SelectedTab = tpgCoprocessor;
 				}
 			}
+
+			ctrlScanlineCycleSelect.Initialize(ctrlScanlineCycleSelect.Scanline, ctrlScanlineCycleSelect.Cycle, EmuApi.GetRomInfo().CoprocessorType == CoprocessorType.Gameboy ? CpuType.Gameboy : CpuType.Cpu);
+
 			tabMain.SelectedIndexChanged += tabMain_SelectedIndexChanged;
 		}
 
@@ -153,7 +156,7 @@ namespace Mesen.GUI.Debugger
 			} else if(tabMain.SelectedTab == tpgCoprocessor) {
 				if(_coprocessorType == CoprocessorType.SA1) {
 					UpdateSa1Tab();
-				} else if(_coprocessorType == CoprocessorType.Gameboy) {
+				} else if(_coprocessorType == CoprocessorType.Gameboy || _coprocessorType == CoprocessorType.SGB) {
 					UpdateGameboyTab();
 				}
 			}
@@ -177,8 +180,8 @@ namespace Mesen.GUI.Debugger
 				new RegEntry("$FF40.7", "LCD Enabled", ppu.LcdEnabled),
 
 				new RegEntry("$FF41", "LCD Status (STAT)", null),
-				new RegEntry("$FF41.0-1", "Mode", (ppu.Status & 0x03)),
-				new RegEntry("$FF41.2", "Coincidence Flag", (ppu.Status & 0x04) != 0),
+				new RegEntry("$FF41.0-1", "Mode", (int)ppu.Mode),
+				new RegEntry("$FF41.2", "Coincidence Flag", ppu.LyCoincidenceFlag),
 				new RegEntry("$FF41.3", "Mode 0 H-Blank IRQ", (ppu.Status & 0x08) != 0),
 				new RegEntry("$FF41.4", "Mode 1 V-Blank IRQ", (ppu.Status & 0x10) != 0),
 				new RegEntry("$FF41.5", "Mode 2 OAM IRQ", (ppu.Status & 0x20) != 0),
@@ -187,13 +190,77 @@ namespace Mesen.GUI.Debugger
 				new RegEntry("", "LCD Registers", null),
 				new RegEntry("$FF42", "Scroll Y (SCY)", ppu.ScrollY, Format.X8),
 				new RegEntry("$FF43", "Scroll X (SCX)", ppu.ScrollX, Format.X8),
-				new RegEntry("$FF44", "Y-Coordinate (LY)", ppu.Scanline, Format.X8),
+				new RegEntry("$FF44", "Y-Coordinate (LY)", ppu.Ly, Format.X8),
 				new RegEntry("$FF45", "LY Compare (LYC)", ppu.LyCompare, Format.X8),
 				new RegEntry("$FF47", "BG Palette (BGP)", ppu.BgPalette, Format.X8),
 				new RegEntry("$FF48", "OBJ Palette 0 (OBP0)", ppu.ObjPalette0, Format.X8),
 				new RegEntry("$FF49", "OBJ Palette 1 (OBP1)", ppu.ObjPalette1, Format.X8),
 				new RegEntry("$FF4A", "Window Y (WY)", ppu.WindowY, Format.X8),
 				new RegEntry("$FF4B", "Window X (WX)", ppu.WindowX, Format.X8),
+			});
+
+			GbTimerState timer = gb.Timer;
+			entries.AddRange(new List<RegEntry>() {
+				new RegEntry("$FF04-7", "Timer", null),
+				new RegEntry("$FF04", "DIV - Divider", timer.Divider, Format.X16),
+				new RegEntry("$FF05", "TIMA - Counter", timer.Counter, Format.X8),
+				new RegEntry("$FF06", "TMA - Modulo", timer.Modulo, Format.X8),
+				new RegEntry("$FF07", "TAC - Control", timer.Control, Format.X8)
+			});
+
+			GbDmaControllerState dma = gb.Dma;
+			entries.AddRange(new List<RegEntry>() {
+				new RegEntry("", "DMA", null),
+				new RegEntry("$FF46", "OAM DMA - Source", (dma.OamDmaSource << 8), Format.X16),
+				new RegEntry("$FF51-2", "CGB - Source", dma.CgbDmaSource, Format.X16),
+				new RegEntry("$FF53-4", "CGB - Destination", dma.CgbDmaDest, Format.X16),
+				new RegEntry("$FF55.0-6", "CGB - Length", dma.CgbDmaLength, Format.X8),
+				new RegEntry("$FF55.7", "CGB - HDMA Done", dma.CgbHdmaDone),
+				new RegEntry("", "CGB - HDMA Running", dma.CgbHdmaRunning),
+			});
+
+			GbMemoryManagerState memManager = gb.MemoryManager;
+			entries.AddRange(new List<RegEntry>() {
+				new RegEntry("", "IRQ", null),
+				new RegEntry("$FF0F", "IF - IRQ Flags", memManager.IrqRequests, Format.X8),
+				new RegEntry("$FF0F.0", "IF - Vertical Blank IRQ", (memManager.IrqRequests & 0x01) != 0),
+				new RegEntry("$FF0F.1", "IF - STAT IRQ", (memManager.IrqRequests & 0x02) != 0),
+				new RegEntry("$FF0F.2", "IF - Timer IRQ", (memManager.IrqRequests & 0x04) != 0),
+				new RegEntry("$FF0F.3", "IF - Serial IRQ", (memManager.IrqRequests & 0x08) != 0),
+				new RegEntry("$FF0F.4", "IF - Joypad IRQ", (memManager.IrqRequests & 0x10) != 0),
+
+				new RegEntry("$FFFF", "IE - IRQ Enabled", memManager.IrqEnabled, Format.X8),
+				new RegEntry("$FFFF.0", "IE - Vertical Blank IRQ Enabled", (memManager.IrqEnabled & 0x01) != 0),
+				new RegEntry("$FFFF.1", "IE - STAT IRQ Enabled", (memManager.IrqEnabled & 0x02) != 0),
+				new RegEntry("$FFFF.2", "IE - Timer IRQ Enabled", (memManager.IrqEnabled & 0x04) != 0),
+				new RegEntry("$FFFF.3", "IE - Serial IRQ Enabled", (memManager.IrqEnabled & 0x08) != 0),
+				new RegEntry("$FFFF.4", "IE - Joypad IRQ Enabled", (memManager.IrqEnabled & 0x10) != 0),
+
+				new RegEntry("", "Misc", null),
+				new RegEntry("$FF00", "Input Select", memManager.InputSelect, Format.X8),
+				new RegEntry("$FF01", "Serial Data", memManager.SerialData, Format.X8),
+				new RegEntry("$FF02", "Serial Control", memManager.SerialControl, Format.X8),
+				new RegEntry("", "Serial Bit Count", memManager.SerialBitCount),
+			});
+
+
+			GbApuState apu = gb.Apu.Common;
+			entries.AddRange(new List<RegEntry>() {
+				new RegEntry("", "APU", null),
+				new RegEntry("$FF24.0-2", "Volume Right", apu.RightVolume),
+				new RegEntry("$FF24.3", "External Audio Right Enabled", apu.ExtAudioRightEnabled),
+				new RegEntry("$FF24.4-6", "Volume Left", apu.LeftVolume),
+				new RegEntry("$FF24.7", "External Audio Left Enabled", apu.ExtAudioRightEnabled),
+				new RegEntry("$FF25.0", "Right Square 1 Enabled", apu.EnableRightSq1 != 0),
+				new RegEntry("$FF25.1", "Right Square 2 Enabled", apu.EnableRightSq2 != 0),
+				new RegEntry("$FF25.2", "Right Wave Enabled", apu.EnableRightWave != 0),
+				new RegEntry("$FF25.3", "Right Noise Enabled", apu.EnableRightNoise != 0),
+				new RegEntry("$FF25.4", "Left Square 1 Enabled", apu.EnableLeftSq1 != 0),
+				new RegEntry("$FF25.5", "Left Square 2 Enabled", apu.EnableLeftSq2 != 0),
+				new RegEntry("$FF25.6", "Left Wave Enabled", apu.EnableLeftWave != 0),
+				new RegEntry("$FF25.7", "Left Noise Enabled", apu.EnableLeftNoise != 0),
+				new RegEntry("$FF26.7", "APU Enabled", apu.ApuEnabled),
+				new RegEntry("", "Frame Sequencer", apu.FrameSequenceStep),
 			});
 
 			GbSquareState sq1 = gb.Apu.Square1;
@@ -281,7 +348,7 @@ namespace Mesen.GUI.Debugger
 				new RegEntry("$FF1E.7", "Channel Enabled", wave.Enabled),
 
 				new RegEntry("--", "Timer", wave.Timer),
-				new RegEntry("--", "Position", wave.SampleBuffer),
+				new RegEntry("--", "Sample Buffer", wave.SampleBuffer),
 				new RegEntry("--", "Position", wave.Position),
 				new RegEntry("--", "Output", wave.Output),
 			});
@@ -626,7 +693,7 @@ namespace Mesen.GUI.Debugger
 			addReg(0x4D, "Echo Enable (EON)");
 			addReg(0x5D, "Source Directory (Offset) (DIR)");
 			addReg(0x6D, "Echo Buffer (Offset) (ESA)");
-			addReg(0x6D, "Echo Delay (EDL)");
+			addReg(0x7D, "Echo Delay (EDL)");
 
 			entries.Add(new RegEntry("$6C", "Flags (FLG)", null));
 			entries.Add(new RegEntry("$6C.0-4", "Noise Clock", dsp.Regs[0x6C] & 0x1F, Format.X8));

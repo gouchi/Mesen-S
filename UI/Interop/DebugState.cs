@@ -612,7 +612,8 @@ namespace Mesen.GUI
 		None = 0,
 		PrgRom = (int)SnesMemoryType.GbPrgRom,
 		WorkRam = (int)SnesMemoryType.GbWorkRam,
-		CartRam = (int)SnesMemoryType.GbCartRam
+		CartRam = (int)SnesMemoryType.GbCartRam,
+		BootRom = (int)SnesMemoryType.GbBootRom,
 	}
 
 	public enum RegisterAccess
@@ -625,15 +626,26 @@ namespace Mesen.GUI
 
 	public struct GbMemoryManagerState
 	{
+		public UInt64 CycleCount;
+		public UInt64 ApuCycleCount;
+		
 		public byte CgbWorkRamBank;
 		[MarshalAs(UnmanagedType.I1)] public bool CgbSwitchSpeedRequest;
 		[MarshalAs(UnmanagedType.I1)] public bool CgbHighSpeed;
-		public UInt64 ApuCycleCount;
+
+		public byte CgbRegFF72;
+		public byte CgbRegFF73;
+		public byte CgbRegFF74;
+		public byte CgbRegFF75;
 
 		[MarshalAs(UnmanagedType.I1)] public bool DisableBootRom;
 		public byte IrqRequests;
 		public byte IrqEnabled;
 		public byte InputSelect;
+
+		public byte SerialData;
+		public byte SerialControl;
+		public byte SerialBitCount;
 
 		[MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x100)]
 		public byte[] IsReadRegister;
@@ -651,6 +663,35 @@ namespace Mesen.GUI
 		public RegisterAccess[] MemoryAccessType;
 	}
 
+	public struct GbDmaControllerState
+	{
+		public byte OamDmaSource;
+		public byte DmaStartDelay;
+		public byte InternalDest;
+		public byte DmaCounter;
+		public byte DmaReadBuffer;
+
+		public UInt16 CgbDmaSource;
+		public UInt16 CgbDmaDest;
+		public byte CgbDmaLength;
+		[MarshalAs(UnmanagedType.I1)] public bool CgbHdmaDone;
+		[MarshalAs(UnmanagedType.I1)] public bool CgbHdmaRunning;
+	};
+
+	public struct GbTimerState
+	{
+		public UInt16 Divider;
+
+		[MarshalAs(UnmanagedType.I1)] public bool NeedReload;
+		[MarshalAs(UnmanagedType.I1)] public bool Reloaded;
+		public byte Counter;
+		public byte Modulo;
+
+		public byte Control;
+		[MarshalAs(UnmanagedType.I1)] public bool TimerEnabled;
+		public UInt16 TimerDivider;
+	};
+
 	public enum GbType
 	{
 		Gb = 0,
@@ -664,6 +705,8 @@ namespace Mesen.GUI
 		public GbPpuState Ppu;
 		public GbApuDebugState Apu;
 		public GbMemoryManagerState MemoryManager;
+		public GbTimerState Timer;
+		public GbDmaControllerState Dma;
 		[MarshalAs(UnmanagedType.I1)] public bool HasBattery;
 	}
 
@@ -678,7 +721,6 @@ namespace Mesen.GUI
 
 	public struct GbCpuState
 	{
-		public UInt64 CycleCount;
 		public UInt16 PC;
 		public UInt16 SP;
 
@@ -693,6 +735,7 @@ namespace Mesen.GUI
 		public byte H;
 		public byte L;
 
+		[MarshalAs(UnmanagedType.I1)] public bool EiPending;
 		[MarshalAs(UnmanagedType.I1)] public bool IME;
 		[MarshalAs(UnmanagedType.I1)] public bool Halted;
 	}
@@ -702,17 +745,24 @@ namespace Mesen.GUI
 		HBlank,
 		VBlank,
 		OamEvaluation,
-		Drawing
+		Drawing,
+		NoIrq
 	}
 
 	public struct GbPpuState
 	{
 		public byte Scanline;
 		public UInt16 Cycle;
+		public UInt16 IdleCycles;
 		public PpuMode Mode;
+		public PpuMode IrqMode;
 		[MarshalAs(UnmanagedType.I1)] public bool StatIrqFlag;
 
+		public byte Ly;
+		public Int16 LyForCompare;
+
 		public byte LyCompare;
+		[MarshalAs(UnmanagedType.I1)] public bool LyCoincidenceFlag;
 		public byte BgPalette;
 		public byte ObjPalette0;
 		public byte ObjPalette1;
@@ -734,11 +784,8 @@ namespace Mesen.GUI
 		public byte Status;
 		public UInt32 FrameCount;
 
+		[MarshalAs(UnmanagedType.I1)] public bool CgbEnabled;
 		public byte CgbVramBank;
-		public UInt16 CgbDmaSource;
-		public UInt16 CgbDmaDest;
-		public byte CgbDmaLength;
-		[MarshalAs(UnmanagedType.I1)] public bool CgbHdmaMode;
 
 		public byte CgbBgPalPosition;
 		[MarshalAs(UnmanagedType.I1)] public bool CgbBgPalAutoInc;
@@ -768,6 +815,7 @@ namespace Mesen.GUI
 		[MarshalAs(UnmanagedType.I1)] public bool EnvRaiseVolume;
 		public byte EnvPeriod;
 		public byte EnvTimer;
+		[MarshalAs(UnmanagedType.I1)] public bool EnvStopped;
 
 		public byte Duty;
 		public UInt16 Frequency;

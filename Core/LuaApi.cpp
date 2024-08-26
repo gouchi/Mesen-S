@@ -81,7 +81,6 @@ int LuaApi::GetLibrary(lua_State *lua)
 		{ "log", LuaApi::Log },
 		{ "displayMessage", LuaApi::DisplayMessage },
 		{ "reset", LuaApi::Reset },
-	   { "stop", LuaApi::Stop },
 		{ "breakExecution", LuaApi::Break },
 		{ "resume", LuaApi::Resume },
 		{ "execute", LuaApi::Execute },
@@ -158,6 +157,7 @@ int LuaApi::GetLibrary(lua_State *lua)
 	lua_pushintvalue(gbCartRam, SnesMemoryType::GbCartRam);
 	lua_pushintvalue(gbVideoRam, SnesMemoryType::GbVideoRam);
 	lua_pushintvalue(gbHighRam, SnesMemoryType::GbHighRam);
+	lua_pushintvalue(gbBootRom, SnesMemoryType::GbBootRom);
 	lua_settable(lua, -3);
 
 	lua_pushliteral(lua, "counterOpType");
@@ -178,6 +178,8 @@ int LuaApi::GetLibrary(lua_State *lua)
 	lua_pushintvalue(scriptEnded, EventType::ScriptEnded);
 	lua_pushintvalue(stateLoaded, EventType::StateLoaded);
 	lua_pushintvalue(stateSaved, EventType::StateSaved);
+	lua_pushintvalue(gbStartFrame, EventType::GbStartFrame);
+	lua_pushintvalue(gbEndFrame, EventType::GbEndFrame);
 	//TODO
 	/*lua_pushintvalue(codeBreak, EventType::CodeBreak);
 	*/
@@ -544,16 +546,6 @@ int LuaApi::Reset(lua_State *lua)
 	checkparams();
 	checkinitdone();
 	_console->Reset();
-	return l.ReturnCount();
-}
-
-int LuaApi::Stop(lua_State *lua)
-{
-	LuaCallHelper l(lua);
-	int32_t stopCode = l.ReadInteger(0);
-	checkminparams(0);
-	checkinitdone();
-	_console->Stop(stopCode);
 	return l.ReturnCount();
 }
 

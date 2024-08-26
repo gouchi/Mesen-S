@@ -25,6 +25,7 @@ namespace Mesen.GUI.Debugger
 				return existingWindow;
 			} else {
 				BaseForm frm = null;
+				 
 				switch(window) {
 					case DebugWindow.Debugger: frm = new frmDebugger(CpuType.Cpu); frm.Icon = Properties.Resources.Debugger; break;
 					case DebugWindow.SpcDebugger: frm = new frmDebugger(CpuType.Spc); frm.Icon = Properties.Resources.SpcDebugger; break;
@@ -35,15 +36,21 @@ namespace Mesen.GUI.Debugger
 					case DebugWindow.GbDebugger: frm = new frmDebugger(CpuType.Gameboy); frm.Icon = Properties.Resources.GbDebugger; break;
 					case DebugWindow.TraceLogger: frm = new frmTraceLogger(); frm.Icon = Properties.Resources.LogWindow; break;
 					case DebugWindow.MemoryTools: frm = new frmMemoryTools(); frm.Icon = Properties.Resources.CheatCode; break;
-					case DebugWindow.TileViewer: frm = new frmTileViewer(); frm.Icon = Properties.Resources.VerticalLayout; break;
-					case DebugWindow.TilemapViewer: frm = new frmTilemapViewer(); frm.Icon = Properties.Resources.VideoOptions; break;
-					case DebugWindow.PaletteViewer: frm = new frmPaletteViewer(); frm.Icon = Properties.Resources.VideoFilter; break;
-					case DebugWindow.SpriteViewer: frm = new frmSpriteViewer(); frm.Icon = Properties.Resources.PerfTracker; break;
-					case DebugWindow.EventViewer: frm = new frmEventViewer(); frm.Icon = Properties.Resources.NesEventViewer; break;
+					case DebugWindow.TileViewer: frm = new frmTileViewer(CpuType.Cpu); frm.Icon = Properties.Resources.VerticalLayout; break;
+					case DebugWindow.TilemapViewer: frm = new frmTilemapViewer(CpuType.Cpu); frm.Icon = Properties.Resources.VideoOptions; break;
+					case DebugWindow.PaletteViewer: frm = new frmPaletteViewer(CpuType.Cpu); frm.Icon = Properties.Resources.VideoFilter; break;
+					case DebugWindow.SpriteViewer: frm = new frmSpriteViewer(CpuType.Cpu); frm.Icon = Properties.Resources.PerfTracker; break;
+					case DebugWindow.EventViewer: frm = new frmEventViewer(CpuType.Cpu); frm.Icon = Properties.Resources.NesEventViewer; break;
 					case DebugWindow.ScriptWindow: frm = new frmScript(); frm.Icon = Properties.Resources.Script; break;
 					case DebugWindow.RegisterViewer: frm = new frmRegisterViewer(); frm.Icon = Properties.Resources.RegisterIcon; break;
 					case DebugWindow.Profiler: frm = new frmProfiler(); frm.Icon = Properties.Resources.PerfTracker; break;
 					case DebugWindow.Assembler: frm = new frmAssembler(); frm.Icon = Properties.Resources.Chip; break;
+					case DebugWindow.DebugLog: frm = new frmDebugLog(); frm.Icon = Properties.Resources.LogWindow; break;
+					case DebugWindow.GbTileViewer: frm = new frmTileViewer(CpuType.Gameboy); frm.Icon = Properties.Resources.VerticalLayout; break;
+					case DebugWindow.GbTilemapViewer: frm = new frmTilemapViewer(CpuType.Gameboy); frm.Icon = Properties.Resources.VideoOptions; break;
+					case DebugWindow.GbPaletteViewer: frm = new frmPaletteViewer(CpuType.Gameboy); frm.Icon = Properties.Resources.VideoFilter; break;
+					case DebugWindow.GbSpriteViewer: frm = new frmSpriteViewer(CpuType.Gameboy); frm.Icon = Properties.Resources.PerfTracker; break;
+					case DebugWindow.GbEventViewer: frm = new frmEventViewer(CpuType.Gameboy); frm.Icon = Properties.Resources.NesEventViewer; break;
 				}
 
 				if(_openedWindows.Count == 0) {
@@ -111,13 +118,13 @@ namespace Mesen.GUI.Debugger
 			throw new Exception("Invalid CPU type");
 		}
 
-		public static void OpenAssembler(string code = "", int startAddress = 0, int blockLength = 0)
+		public static void OpenAssembler(CpuType cpuType, string code = "", int startAddress = 0, int blockLength = 0)
 		{
 			if(_openedWindows.Count == 0) {
 				DebugWorkspaceManager.GetWorkspace();
 			}
 
-			frmAssembler frm = new frmAssembler(code, startAddress, blockLength);
+			frmAssembler frm = new frmAssembler(cpuType, code, startAddress, blockLength);
 			frm.Icon = Properties.Resources.Chip;
 			_openedWindows.Add(frm);
 			frm.FormClosed += Debugger_FormClosed;
@@ -134,6 +141,41 @@ namespace Mesen.GUI.Debugger
 			get
 			{
 				return _openedWindows.Count > 0;
+			}
+		}
+
+		public static void CloseWindows(CpuType cpuType)
+		{
+			List<Form> openedWindows = new List<Form>(_openedWindows);
+			foreach(Form frm in openedWindows) {
+				if(frm is IDebuggerWindow && ((IDebuggerWindow)frm).CpuType == cpuType) {
+					frm.Close();
+				}
+			}
+		}
+
+		public static void CloseWindows(CoprocessorType coprocessorType)
+		{
+			if(coprocessorType != CoprocessorType.CX4) {
+				CloseWindows(CpuType.Cx4);
+			}
+			if(coprocessorType != CoprocessorType.GSU) {
+				CloseWindows(CpuType.Gsu);
+			}
+			if(coprocessorType != CoprocessorType.SA1) {
+				CloseWindows(CpuType.Sa1);
+			}
+			if(coprocessorType < CoprocessorType.DSP1 && coprocessorType > CoprocessorType.DSP4 && coprocessorType != CoprocessorType.ST010 && coprocessorType != CoprocessorType.ST011) {
+				CloseWindows(CpuType.NecDsp);
+			}
+
+			if(coprocessorType == CoprocessorType.Gameboy) {
+				CloseWindows(CpuType.Cpu);
+				CloseWindows(CpuType.Spc);
+			}
+
+			if(coprocessorType != CoprocessorType.Gameboy && coprocessorType != CoprocessorType.SGB) {
+				CloseWindows(CpuType.Gameboy);
 			}
 		}
 
@@ -157,8 +199,10 @@ namespace Mesen.GUI.Debugger
 				case DebugWindow.Cx4Debugger: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmDebugger) && ((frmDebugger)form).CpuType == CpuType.Cx4);
 				case DebugWindow.GbDebugger: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmDebugger) && ((frmDebugger)form).CpuType == CpuType.Gameboy);
 				case DebugWindow.TraceLogger: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmTraceLogger));
-				case DebugWindow.EventViewer: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmEventViewer));
+				case DebugWindow.EventViewer: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmEventViewer) && ((frmEventViewer)form).CpuType == CpuType.Cpu);
+				case DebugWindow.GbEventViewer: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmEventViewer) && ((frmEventViewer)form).CpuType == CpuType.Gameboy);
 				case DebugWindow.Profiler: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmProfiler));
+				case DebugWindow.DebugLog: return _openedWindows.ToList().Find((form) => form.GetType() == typeof(frmDebugLog));
 			}
 
 			return null;
@@ -191,6 +235,11 @@ namespace Mesen.GUI.Debugger
 		}
 	}
 
+	public interface IDebuggerWindow
+	{
+		CpuType CpuType { get; }
+	}
+
 	public enum DebugWindow
 	{
 		Debugger,
@@ -210,6 +259,13 @@ namespace Mesen.GUI.Debugger
 		ScriptWindow,
 		RegisterViewer,
 		Profiler,
-		Assembler
+		Assembler,
+		DebugLog,
+
+		GbTileViewer,
+		GbTilemapViewer,
+		GbPaletteViewer,
+		GbSpriteViewer,
+		GbEventViewer,
 	}
 }

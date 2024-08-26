@@ -189,7 +189,7 @@ void Ppu::GetTilemapData(uint8_t layerIndex, uint8_t columnIndex)
 
 	/* The tilemap address to read the tile data from */
 	uint16_t addr = baseOffset + (column & 0x1F) + (config.DoubleWidth ? (column & 0x20) << 5 : 0);
-	_layerData[layerIndex].Tiles[columnIndex].TilemapData = _vram[addr];
+	_layerData[layerIndex].Tiles[columnIndex].TilemapData = _vram[addr & 0x7FFF];
 	_layerData[layerIndex].Tiles[columnIndex].VScroll = vScroll;
 }
 
@@ -244,7 +244,7 @@ void Ppu::GetHorizontalOffsetByte(uint8_t columnIndex)
 	uint16_t columnOffset = (((columnIndex << 3) + (_state.Layers[2].HScroll & ~0x07)) >> 3) & (_state.Layers[2].DoubleWidth ? 0x3F : 0x1F);
 	uint16_t rowOffset = (_state.Layers[2].VScroll >> 3) & (_state.Layers[2].DoubleHeight ? 0x3F : 0x1F);
 
-	_hOffset = _vram[_state.Layers[2].TilemapAddress + columnOffset + (rowOffset << 5)];
+	_hOffset = _vram[(_state.Layers[2].TilemapAddress + columnOffset + (rowOffset << 5)) & 0x7FFF];
 }
 
 void Ppu::GetVerticalOffsetByte(uint8_t columnIndex)
@@ -257,7 +257,7 @@ void Ppu::GetVerticalOffsetByte(uint8_t columnIndex)
 	//The vertical offset is 0x40 bytes later - but wraps around within the tilemap based on the tilemap size (0x800 or 0x1000 bytes)
 	uint16_t vOffsetAddr = _state.Layers[2].TilemapAddress + ((tileOffset + 0x20) & (_state.Layers[2].DoubleHeight ? 0x7FF : 0x3FF));
 
-	_vOffset = _vram[vOffsetAddr];
+	_vOffset = _vram[vOffsetAddr & 0x7FFF];
 }
 
 void Ppu::FetchTileData()
@@ -580,7 +580,7 @@ void Ppu::EvaluateNextLineSprites()
 			FetchSpritePosition(_oamEvaluationIndex << 2);
 		} else {
 			//Second cycle: Check if sprite is in range, if so, keep its index
-			if(_currentSprite.IsVisible(_scanline)) {
+			if(_currentSprite.IsVisible(_scanline, _state.ObjInterlace)) {
 				if(_spriteCount < 32) {
 					_spriteIndexes[_spriteCount] = _oamEvaluationIndex;
 					_spriteCount++;
@@ -662,9 +662,6 @@ void Ppu::FetchSpritePosition(uint16_t oamAddress)
 	}
 
 	uint8_t height = _oamSizes[_state.OamMode][largeSprite][1] << 3;
-	if(_state.ObjInterlace) {
-		height /= 2;
-	}
 	_currentSprite.Height = height;
 }
 
@@ -706,8 +703,8 @@ void Ppu::FetchSpriteAttributes(uint16_t oamAddress)
 	uint8_t row = (tileRow + rowOffset) & 0x0F;
 	uint8_t columnOffset = _currentSprite.HorizontalMirror ? _currentSprite.ColumnOffset : (columnCount - _currentSprite.ColumnOffset - 1);
 	uint8_t tileIndex = (row << 4) | ((tileColumn + columnOffset) & 0x0F);
-	uint16_t tileStart = (_state.OamBaseAddress + (tileIndex << 4) + (useSecondTable ? _state.OamAddressOffset : 0)) & 0x7FFF;
-	_currentSprite.FetchAddress = tileStart + yOffset;
+	uint16_t tileStart = (_state.OamBaseAddress + (tileIndex << 4) + (useSecondTable ? _state.OamAddressOffset : 0));
+	_currentSprite.FetchAddress = (tileStart + yOffset) & 0x7FFF;
 
 	int16_t x = _currentSprite.X == -256 ? 0 : _currentSprite.X;
 	int16_t endTileX = x + ((columnCount - _currentSprite.ColumnOffset - 1) << 3) + 8;
@@ -727,7 +724,7 @@ void Ppu::FetchSpriteTile(bool secondCycle)
 	_currentSprite.ChrData[secondCycle] = chrData;
 
 	if(!secondCycle) {
-		_currentSprite.FetchAddress += 8;
+		_currentSprite.FetchAddress = (_currentSprite.FetchAddress + 8) & 0x7FFF;
 	} else {
 		int16_t xPos = _currentSprite.DrawX;
 		for(int x = 0; x < 8; x++) {
@@ -952,7 +949,7 @@ void Ppu::RenderTilemap()
 
 	TileData* tileData  = _layerData[layerIndex].Tiles;
 
-	uint8_t mosaicCounter = applyMosaic ? _state.MosaicSize - (_drawStartX % _state.MosaicSize) : 0;
+	uint8_t mosaicCounter = applyMosaic ? (_drawStartX % _state.MosaicSize) : 0;
 
 	uint8_t lookupIndex;
 	uint8_t chrDataOffset;
@@ -991,7 +988,7 @@ void Ppu::RenderTilemap()
 		uint8_t priority = (tilemapData & 0x2000) ? highPriority : normalPriority;
 
 		if(applyMosaic) {
-			if(mosaicCounter == _state.MosaicSize) {
+			if(mosaicCounter == 0) {
 				mosaicCounter = 1;
 				if(hiResMode) {
 					color = hiresSubColor;
@@ -1000,6 +997,9 @@ void Ppu::RenderTilemap()
 				_mosaicPriority[layerIndex] = priority;
 			} else {
 				mosaicCounter++;
+				if(mosaicCounter == _state.MosaicSize) {
+					mosaicCounter = 0;
+				}
 				color = _mosaicColor[layerIndex] & 0xFF;
 				paletteIndex = _mosaicColor[layerIndex] >> 8;
 				priority = _mosaicPriority[layerIndex];
@@ -1111,7 +1111,7 @@ void Ppu::RenderTilemapMode7()
 		//Keep the "scanline" to what it was at the start of this mosaic block
 		realY -= _state.MosaicSize - _mosaicScanlineCounter;
 	}
-	uint8_t mosaicCounter = applyMosaic ? _state.MosaicSize - (_drawStartX % _state.MosaicSize) : 0;
+	uint8_t mosaicCounter = applyMosaic ? (_drawStartX % _state.MosaicSize) : 0;
 
 	int32_t xValue = (
 		((_state.Mode7.Matrix[0] * clip(hScroll - centerX)) & ~63) +
@@ -1178,12 +1178,15 @@ void Ppu::RenderTilemapMode7()
 		}
 
 		if(applyMosaic) {
-			if(mosaicCounter == _state.MosaicSize) {
+			if(mosaicCounter == 0) {
 				mosaicCounter = 1;
 				_mosaicColor[layerIndex] = colorIndex;
 				_mosaicPriority[layerIndex] = priority;
 			} else {
 				mosaicCounter++;
+				if(mosaicCounter == _state.MosaicSize) {
+					mosaicCounter = 0;
+				}
 				colorIndex = _mosaicColor[layerIndex];
 				priority = _mosaicPriority[layerIndex];
 			}
@@ -1224,20 +1227,25 @@ void Ppu::ApplyColorMath()
 {
 	uint8_t activeWindowCount = (uint8_t)_state.Window[0].ActiveLayers[Ppu::ColorWindowIndex] + (uint8_t)_state.Window[1].ActiveLayers[Ppu::ColorWindowIndex];
 	bool hiResMode = _state.HiResMode || _state.BgMode == 5 || _state.BgMode == 6;
-	uint16_t prevMainPixel = 0;
-	int prevX = _drawStartX > 0 ? _drawStartX - 1 : 0;
 
-	for(int x = _drawStartX; x <= _drawEndX; x++) {
-		bool isInsideWindow = ProcessMaskWindow<Ppu::ColorWindowIndex>(activeWindowCount, x);
+	if(hiResMode) {
+		for(int x = _drawStartX; x <= _drawEndX; x++) {
+			bool isInsideWindow = ProcessMaskWindow<Ppu::ColorWindowIndex>(activeWindowCount, x);
 
-		uint16_t subPixel = _subScreenBuffer[x];
-		if(hiResMode) {
+			//Keep original subscreen color, which is used to apply color math to the main screen after
+			uint16_t subPixel = _subScreenBuffer[x];
 			//Apply the color math based on the previous main pixel
+			uint16_t prevMainPixel = x > 0 ? _mainScreenBuffer[x - 1] : 0;
+			int prevX = x > 0 ? x - 1 : 0;
 			ApplyColorMathToPixel(_subScreenBuffer[x], prevMainPixel, prevX, isInsideWindow);
-			prevMainPixel = _mainScreenBuffer[x];
-			prevX = x;
+
+			ApplyColorMathToPixel(_mainScreenBuffer[x], subPixel, x, isInsideWindow);
 		}
-		ApplyColorMathToPixel(_mainScreenBuffer[x], subPixel, x, isInsideWindow);
+	} else {
+		for(int x = _drawStartX; x <= _drawEndX; x++) {
+			bool isInsideWindow = ProcessMaskWindow<Ppu::ColorWindowIndex>(activeWindowCount, x);
+			ApplyColorMathToPixel(_mainScreenBuffer[x], _subScreenBuffer[x], x, isInsideWindow);
+		}
 	}
 }
 

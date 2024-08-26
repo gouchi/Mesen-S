@@ -31,13 +31,13 @@ unique_ptr<IRenderingDevice> _renderer;
 unique_ptr<IAudioDevice> _soundManager;
 unique_ptr<IKeyManager> _keyManager;
 unique_ptr<ShortcutKeyHandler> _shortcutKeyHandler;
-
-void* _windowHandle = nullptr;
-void* _viewerHandle = nullptr;
-string _returnString;
-string _logString;
 shared_ptr<Console> _console;
-InteropNotificationListeners _listeners;
+
+static void* _windowHandle = nullptr;
+static void* _viewerHandle = nullptr;
+static string _returnString;
+static string _logString;
+static InteropNotificationListeners _listeners;
 
 struct InteropRomInfo
 {
@@ -48,8 +48,8 @@ struct InteropRomInfo
 	char Sha1[40];
 };
 
-string _romPath;
-string _patchPath;
+static string _romPath;
+static string _patchPath;
 
 extern "C" {
 	DllExport bool __stdcall TestDll()
@@ -269,6 +269,9 @@ extern "C" {
 			_console.reset(new Console());
 			KeyManager::SetSettings(_console->GetSettings().get());
 			_console->Initialize();
+			GameboyConfig cfg = _console->GetSettings()->GetGameboyConfig();
+			cfg.Model = GameboyModel::GameboyColor;
+			_console->GetSettings()->SetGameboyConfig(cfg);
 			_console->LoadRom((VirtualFile)testRoms[i], VirtualFile());
 
 			if(enableDebugger) {

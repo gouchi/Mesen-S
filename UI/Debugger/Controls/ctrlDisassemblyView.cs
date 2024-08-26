@@ -176,9 +176,9 @@ namespace Mesen.GUI.Debugger.Controls
 		private void MarkSelectionAs(CdlFlags type)
 		{
 			SelectedAddressRange range = GetSelectedAddressRange();
-			if(!_inSourceView && range != null && range.Start.Type == SnesMemoryType.PrgRom && range.End.Type == SnesMemoryType.PrgRom) {
-				DebugApi.MarkBytesAs((UInt32)range.Start.Address, (UInt32)range.End.Address, type);
-				DebugWindowManager.OpenDebugger(CpuType.Cpu)?.RefreshDisassembly();
+			if(!_inSourceView && range != null && range.Start.Type == _manager.PrgMemoryType && range.End.Type == _manager.PrgMemoryType) {
+				DebugApi.MarkBytesAs(_manager.CpuType, (UInt32)range.Start.Address, (UInt32)range.End.Address, type);
+				DebugWindowManager.OpenDebugger(_manager.CpuType)?.RefreshDisassembly();
 			}
 		}
 
@@ -511,7 +511,7 @@ namespace Mesen.GUI.Debugger.Controls
 
 			if(range.Start.Address >= 0 && range.End.Address >= 0 && range.Start.Address <= range.End.Address) {
 				int length = range.End.Address - range.Start.Address + 1;
-				DebugWindowManager.OpenAssembler(GetSelectedCode(), range.Start.Address, length);
+				DebugWindowManager.OpenAssembler(_manager.CpuType, GetSelectedCode(), range.Start.Address, length);
 			}
 		}
 
@@ -640,7 +640,7 @@ namespace Mesen.GUI.Debugger.Controls
 			mnuGoToLocation.Text = "Go to Location" + (enableGoToLocation ? suffix : "");
 
 			SelectedAddressRange range = GetSelectedAddressRange();
-			if(range != null && range.Start.Type == SnesMemoryType.PrgRom && range.End.Type == SnesMemoryType.PrgRom) {
+			if(range != null && range.Start.Type == _manager.PrgMemoryType && range.End.Type == _manager.PrgMemoryType) {
 				mnuMarkSelectionAs.Enabled = true;
 				mnuMarkSelectionAs.Text = "Mark selection as... (" + range.Display + ")";
 			} else {
@@ -648,9 +648,11 @@ namespace Mesen.GUI.Debugger.Controls
 				mnuMarkSelectionAs.Text = "Mark selection as...";
 			}
 
-			bool showMarkAs = !_inSourceView && (_manager.CpuType == CpuType.Cpu || _manager.CpuType == CpuType.Sa1);
+			bool showMarkAs = !_inSourceView && (_manager.CpuType == CpuType.Cpu || _manager.CpuType == CpuType.Sa1 || _manager.CpuType == CpuType.Gameboy);
 			mnuMarkSelectionAs.Visible = showMarkAs;
-			mnuEditSelectedCode.Visible = showMarkAs;
+
+			bool showEditCode = !_inSourceView && (_manager.CpuType == CpuType.Cpu || _manager.CpuType == CpuType.Sa1 || _manager.CpuType == CpuType.Gameboy);
+			mnuEditSelectedCode.Visible = showEditCode;
 
 			mnuAddToWatch.Enabled = active;
 			mnuEditInMemoryTools.Enabled = active;

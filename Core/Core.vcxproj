@@ -69,10 +69,13 @@
     <ClInclude Include="GameboyDisUtils.h" />
     <ClInclude Include="GameboyHeader.h" />
     <ClInclude Include="GbApu.h" />
+    <ClInclude Include="GbAssembler.h" />
+    <ClInclude Include="GbBootRom.h" />
     <ClInclude Include="GbCart.h" />
     <ClInclude Include="GbCartFactory.h" />
     <ClInclude Include="GbCpu.h" />
     <ClInclude Include="GbDebugger.h" />
+    <ClInclude Include="GbDmaController.h" />
     <ClInclude Include="GbEventManager.h" />
     <ClInclude Include="GbMbc1.h" />
     <ClInclude Include="GbMbc2.h" />
@@ -85,6 +88,7 @@
     <ClInclude Include="GbTimer.h" />
     <ClInclude Include="GbTypes.h" />
     <ClInclude Include="GbWaveChannel.h" />
+    <ClInclude Include="IAssembler.h" />
     <ClInclude Include="NecDspDebugger.h" />
     <ClInclude Include="ForceDisconnectMessage.h" />
     <ClInclude Include="GameClient.h" />
@@ -233,6 +237,7 @@
     <ClInclude Include="SPC_DSP.h" />
     <ClInclude Include="SPC_Filter.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="SuperGameboy.h" />
     <ClInclude Include="SuperScope.h" />
     <ClInclude Include="SystemActionManager.h" />
     <ClInclude Include="TraceLogger.h" />
@@ -278,12 +283,17 @@
     <ClCompile Include="Gameboy.cpp" />
     <ClCompile Include="GameboyDisUtils.cpp" />
     <ClCompile Include="GbApu.cpp" />
+    <ClCompile Include="GbAssembler.cpp" />
     <ClCompile Include="GbCpu.cpp" />
     <ClCompile Include="GbDebugger.cpp" />
+    <ClCompile Include="GbDmaController.cpp" />
     <ClCompile Include="GbEventManager.cpp" />
     <ClCompile Include="GbMemoryManager.cpp" />
+    <ClCompile Include="GbNoiseChannel.cpp" />
     <ClCompile Include="GbPpu.cpp" />
+    <ClCompile Include="GbSquareChannel.cpp" />
     <ClCompile Include="GbTimer.cpp" />
+    <ClCompile Include="GbWaveChannel.cpp" />
     <ClCompile Include="NecDspDebugger.cpp" />
     <ClCompile Include="EmuSettings.cpp" />
     <ClCompile Include="EventManager.cpp" />
@@ -363,6 +373,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='PGO Optimize|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="SuperGameboy.cpp" />
     <ClCompile Include="TraceLogger.cpp" />
     <ClCompile Include="VideoDecoder.cpp" />
     <ClCompile Include="VideoRenderer.cpp" />

@@ -7,7 +7,7 @@
 struct MissingFirmwareMessage
 {
 	const char* Filename;
-	CoprocessorType FirmwareType;
+	FirmwareType Firmware;
 	uint32_t Size;
 };
 
@@ -38,7 +38,7 @@ private:
 	
 	static bool AttemptLoadBsxFirmware(uint8_t** prgRom, uint32_t& prgSize)
 	{
-		VirtualFile firmware(FolderUtilities::CombinePath(FolderUtilities::GetFirmwareFolder(), "BsxBios.sfc"));
+		VirtualFile firmware(FolderUtilities::CombinePath(FolderUtilities::GetFirmwareFolder(), "BS-X.bin"));
 		if(firmware.IsValid() && firmware.GetSize() >= 0x8000) {
 			*prgRom = new uint8_t[firmware.GetSize()];
 			prgSize = (uint32_t)firmware.GetSize();
@@ -49,8 +49,26 @@ private:
 		return false;
 	}
 
+	static bool AttemptLoadFirmware(uint8_t** out, string filename, uint32_t size, string altFilename = "")
+	{
+		string path = FolderUtilities::CombinePath(FolderUtilities::GetFirmwareFolder(), filename);
+		VirtualFile firmware(path);
+		if((!firmware.IsValid() || firmware.GetSize() != size) && !altFilename.empty()) {
+			string altPath = FolderUtilities::CombinePath(FolderUtilities::GetFirmwareFolder(), altFilename);
+			firmware = VirtualFile(altPath);
+		}
+
+		if(firmware.IsValid() && firmware.GetSize() == size) {
+			*out = new uint8_t[firmware.GetSize()];
+			firmware.ReadFile(*out, (uint32_t)firmware.GetSize());
+			return true;
+		}
+
+		return false;
+	}
+
 public:
-	static bool LoadDspFirmware(Console *console, CoprocessorType coprocessorType, string combinedFilename, string splitFilenameProgram, string splitFilenameData, vector<uint8_t> &programRom, vector<uint8_t> &dataRom, vector<uint8_t> &embeddedFirware, uint32_t programSize = 0x1800, uint32_t dataSize = 0x800)
+	static bool LoadDspFirmware(Console *console, FirmwareType type, string combinedFilename, string splitFilenameProgram, string splitFilenameData, vector<uint8_t> &programRom, vector<uint8_t> &dataRom, vector<uint8_t> &embeddedFirware, uint32_t programSize = 0x1800, uint32_t dataSize = 0x800)
 	{
 		if(embeddedFirware.size() == programSize + dataSize) {
 			programRom.insert(programRom.end(), embeddedFirware.begin(), embeddedFirware.begin() + programSize);
@@ -62,7 +80,7 @@ public:
 
 		MissingFirmwareMessage msg;
 		msg.Filename = combinedFilename.c_str();
-		msg.FirmwareType = coprocessorType;
+		msg.Firmware = type;
 		msg.Size = programSize + dataSize;
 		console->GetNotificationManager()->SendNotification(ConsoleNotificationType::MissingFirmware, &msg);
 
@@ -82,8 +100,8 @@ public:
 		}
 
 		MissingFirmwareMessage msg;
-		msg.Filename = "BsxBios.sfc";
-		msg.FirmwareType = CoprocessorType::Satellaview;
+		msg.Filename = "BS-X.bin";
+		msg.Firmware = FirmwareType::Satellaview;
 		msg.Size = 1024*1024;
 		console->GetNotificationManager()->SendNotification(ConsoleNotificationType::MissingFirmware, &msg);
 		
@@ -92,6 +110,59 @@ public:
 		}
 
 		MessageManager::DisplayMessage("Error", "Could not find firmware file for BS-X");
+		return false;
+	}
+
+	static bool LoadSgbFirmware(Console* console, uint8_t** prgRom, uint32_t& prgSize, bool useSgb2)
+	{
+		string filename = useSgb2 ? "SGB2.sfc" : "SGB1.sfc";
+		prgSize = useSgb2 ? 0x80000 : 0x40000;
+		if(AttemptLoadFirmware(prgRom, filename, prgSize)) {
+			return true;
+		}
+
+		MissingFirmwareMessage msg;
+		msg.Filename = filename.c_str();
+		msg.Firmware = useSgb2 ? FirmwareType::SGB2 : FirmwareType::SGB1;
+		msg.Size = prgSize;
+		console->GetNotificationManager()->SendNotification(ConsoleNotificationType::MissingFirmware, &msg);
+
+		if(AttemptLoadFirmware(prgRom, filename, prgSize)) {
+			return true;
+		}
+
+		MessageManager::DisplayMessage("Error", "Could not find firmware file for Super Game Boy");
+		return false;
+	}
+
+	static bool LoadGbBootRom(Console* console, uint8_t** bootRom, FirmwareType type)
+	{
+		string filename;
+		string altFilename;
+		switch(type) {
+			default:
+			case FirmwareType::Gameboy: filename = "dmg_boot.bin"; altFilename = "gb_bios.bin"; break;
+			case FirmwareType::GameboyColor: filename = "cgb_boot.bin"; altFilename = "gbc_bios.bin"; break;
+			case FirmwareType::Sgb1GameboyCpu: filename = "sgb_boot.bin"; altFilename = "sgb_bios.bin"; break;
+			case FirmwareType::Sgb2GameboyCpu: filename = "sgb2_boot.bin"; altFilename = "sgb_bios.bin"; break;
+		}
+
+		uint32_t size = type == FirmwareType::GameboyColor ? 2304 : 256;
+		if(AttemptLoadFirmware(bootRom, filename, size, altFilename)) {
+			return true;
+		}
+
+		/*MissingFirmwareMessage msg;
+		msg.Filename = filename.c_str();
+		msg.Firmware = type;
+		msg.Size = size;
+		console->GetNotificationManager()->SendNotification(ConsoleNotificationType::MissingFirmware, &msg);
+
+		if(AttemptLoadFirmware(bootRom, filename, size)) {
+			return true;
+		}
+
+		MessageManager::DisplayMessage("Error", "Could not find boot rom: " + filename);*/
 		return false;
 	}
 };
